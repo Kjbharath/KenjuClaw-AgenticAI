@@ -5,7 +5,6 @@ import com.kenju.claw.bootstrap.ClawBootstrapper
 import com.kenju.claw.hardware.HexagonNpuConfig
 import com.kenju.claw.vault.ModelVaultManager
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import timber.log.Timber
