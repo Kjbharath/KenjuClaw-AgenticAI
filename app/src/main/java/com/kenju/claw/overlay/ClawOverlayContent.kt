@@ -1,0 +1,65 @@
+package com.kenju.claw.overlay
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.kenju.claw.orchestrator.ClawMode
+
+/**
+ * ClawOverlayContent
+ *
+ * Root Composable for the KenjuClaw floating overlay. This is the entry-point
+ * passed to the [androidx.compose.ui.platform.ComposeView] that [AgentOverlayService]
+ * inflates and attaches to [android.view.WindowManager].
+ *
+ * Layout (top-to-bottom when panel is open):
+ * ```
+ * ┌──────────────────────────┐
+ * │  ClawPanel (animated)    │  ← slides in / out
+ * ├──────────────────────────┤
+ * │  [4 dp gap]              │
+ * ├──────────────────────────┤
+ * │  ClawFab   ⚡            │  ← always visible
+ * └──────────────────────────┘
+ * ```
+ *
+ * The entire column is horizontally centred on screen by the WindowManager
+ * layout params set in [AgentOverlayService].
+ *
+ * @param state       Observable [OverlayUiState] — reads panelExpanded, activeMode, hud, and fab offset.
+ * @param onTap       Called when the user taps the FAB — toggles [OverlayUiState.panelExpanded].
+ * @param onDrag      Called on drag events with pixel deltas for WindowManager repositioning.
+ * @param onModeSelect Called when the user picks a new [ClawMode] in the segmented toggle.
+ */
+@Composable
+fun ClawOverlayContent(
+    state:        OverlayUiState,
+    onTap:        () -> Unit,
+    onDrag:       (Float, Float) -> Unit,
+    onModeSelect: (ClawMode) -> Unit
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+
+        // ── Selector panel — animates in above the FAB ───────────────────────
+        ClawPanel(
+            visible      = state.panelExpanded,
+            activeMode   = state.activeMode,
+            hud          = state.hud,
+            onModeSelect = onModeSelect
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // ── Draggable floating button ─────────────────────────────────────────
+        ClawFab(
+            activeMode = state.activeMode,
+            isExpanded = state.panelExpanded,
+            onTap      = onTap,
+            onDrag     = onDrag
+        )
+    }
+}
