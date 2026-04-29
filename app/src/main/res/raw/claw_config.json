@@ -1,16 +1,57 @@
 {
   "model_type": "omnineural",
   "architectures": ["OmniNeuralForConditionalGeneration"],
-  "model_name": "omni-neural",
-  "max_tokens": 2048,
+  "model_name": "OmniNeural-4B",
+  "model_version": "1.0",
+  "max_tokens": 4096,
   "enable_thinking": true,
   "plugin_id": "npu",
-  "temperature": 0.7,
-  "top_p": 0.95,
+  "temperature": 0.6,
+  "top_p": 0.92,
+  "top_k": 40,
+  "repetition_penalty": 1.15,
   "quantization": "q4_0",
+
   "npu_config": {
     "device": "Snapdragon_8_Elite",
+    "soc": "sm8750",
     "precision": "int4",
-    "runtime": "hexagon"
+    "runtime": "hexagon",
+    "hexagon_version": "v79",
+    "power_profile": "balanced",
+    "cache_compiled_graphs": true,
+    "num_threads": 4,
+    "batch_size": 1,
+    "context_window": 4096,
+    "kv_cache_type": "int8"
+  },
+
+  "generation": {
+    "stop_tokens": ["<|end|>", "<|eot_id|>", "</s>"],
+    "stream": true,
+    "seed": -1
+  },
+
+  "roles": {
+    "screen_observation": {
+      "system_prompt": "You are KenjuClaw, an on-device AI agent running on the Snapdragon 8 Elite NPU. Analyze the screen content precisely and concisely. Report UI elements, text, and layout.",
+      "max_tokens": 512,
+      "temperature": 0.3
+    },
+    "ocr": {
+      "system_prompt": "Extract all visible text from the provided screen region. Output raw text only, preserving line breaks. No commentary.",
+      "max_tokens": 1024,
+      "temperature": 0.1
+    },
+    "intent_detection": {
+      "system_prompt": "Classify the user's intent from the screen context. Respond with a single JSON object: {\"intent\": \"<name>\", \"confidence\": <0-1>, \"entities\": {}}",
+      "max_tokens": 256,
+      "temperature": 0.2
+    },
+    "agentic": {
+      "system_prompt": "You are KenjuClaw, an autonomous agent. Plan and execute multi-step tasks on the user's device. Think step-by-step. Use available tools.",
+      "max_tokens": 4096,
+      "temperature": 0.6
+    }
   }
 }

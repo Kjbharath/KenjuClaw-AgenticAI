@@ -159,14 +159,61 @@ class NexaNpuEngine(
         val clawConfig = if (configFile.exists()) {
             try {
                 val json = JSONObject(configFile.readText())
+
+                // Parse npu_config block
+                val npuJson = json.optJSONObject("npu_config")
+                val npuSessionConfig = NpuSessionConfig(
+                    device              = npuJson?.optString("device", "Snapdragon_8_Elite") ?: "Snapdragon_8_Elite",
+                    soc                 = npuJson?.optString("soc", "sm8750") ?: "sm8750",
+                    precision           = npuJson?.optString("precision", "int4") ?: "int4",
+                    runtime             = npuJson?.optString("runtime", "hexagon") ?: "hexagon",
+                    hexagonVersion      = npuJson?.optString("hexagon_version", "v79") ?: "v79",
+                    powerProfile        = npuJson?.optString("power_profile", "balanced") ?: "balanced",
+                    cacheCompiledGraphs = npuJson?.optBoolean("cache_compiled_graphs", true) ?: true,
+                    numThreads          = npuJson?.optInt("num_threads", 4) ?: 4,
+                    batchSize           = npuJson?.optInt("batch_size", 1) ?: 1,
+                    contextWindow       = npuJson?.optInt("context_window", 4096) ?: 4096,
+                    kvCacheType         = npuJson?.optString("kv_cache_type", "int8") ?: "int8"
+                )
+
+                // Parse generation block
+                val genJson = json.optJSONObject("generation")
+                val generationConfig = GenerationConfig(
+                    stopTokens = genJson?.optJSONArray("stop_tokens")?.let { arr ->
+                        (0 until arr.length()).map { arr.getString(it) }
+                    } ?: listOf("<|end|>", "</s>"),
+                    stream = genJson?.optBoolean("stream", true) ?: true,
+                    seed   = genJson?.optInt("seed", -1) ?: -1
+                )
+
+                // Parse role-specific configs
+                val rolesJson = json.optJSONObject("roles")
+                val roleConfigs = mutableMapOf<String, RoleConfig>()
+                rolesJson?.keys()?.forEach { key ->
+                    val roleObj = rolesJson.optJSONObject(key)
+                    if (roleObj != null) {
+                        roleConfigs[key] = RoleConfig(
+                            systemPrompt = roleObj.optString("system_prompt", ""),
+                            maxTokens    = roleObj.optInt("max_tokens", 2048),
+                            temperature  = roleObj.optDouble("temperature", 0.6).toFloat()
+                        )
+                    }
+                }
+
                 NexaModelConfig(
-                    modelType       = json.optString("model_type", "omnineural"),
-                    maxTokens       = json.optInt("max_tokens", 2048),
-                    enableThinking  = json.optBoolean("enable_thinking", true),
-                    temperature     = json.optDouble("temperature", 0.7).toFloat(),
-                    topP            = json.optDouble("top_p", 0.95).toFloat(),
-                    quantization    = json.optString("quantization", "q4_0"),
-                    pluginId        = json.optString("plugin_id", pluginId)
+                    modelType         = json.optString("model_type", "omnineural"),
+                    modelName         = json.optString("model_name", "OmniNeural-4B"),
+                    maxTokens         = json.optInt("max_tokens", 4096),
+                    enableThinking    = json.optBoolean("enable_thinking", true),
+                    temperature       = json.optDouble("temperature", 0.6).toFloat(),
+                    topP              = json.optDouble("top_p", 0.92).toFloat(),
+                    topK              = json.optInt("top_k", 40),
+                    repetitionPenalty = json.optDouble("repetition_penalty", 1.15).toFloat(),
+                    quantization      = json.optString("quantization", "q4_0"),
+                    pluginId          = json.optString("plugin_id", pluginId),
+                    npuSession        = npuSessionConfig,
+                    generation        = generationConfig,
+                    roles             = roleConfigs
                 )
             } catch (e: Exception) {
                 Timber.tag(TAG).w(e, "Failed to parse claw_config.json — using defaults")
@@ -179,9 +226,11 @@ class NexaNpuEngine(
 
         loadedConfig = clawConfig
         Timber.tag(TAG).i(
-            "Config loaded: max_tokens=%d, temp=%.1f, quant=%s, thinking=%b",
-            clawConfig.maxTokens, clawConfig.temperature,
-            clawConfig.quantization, clawConfig.enableThinking
+            "Config loaded: model=%s, max_tokens=%d, temp=%.1f, top_k=%d, rep_pen=%.2f, quant=%s, thinking=%b, context=%d, kv=%s, roles=%d",
+            clawConfig.modelName, clawConfig.maxTokens, clawConfig.temperature,
+            clawConfig.topK, clawConfig.repetitionPenalty, clawConfig.quantization,
+            clawConfig.enableThinking, clawConfig.npuSession.contextWindow,
+            clawConfig.npuSession.kvCacheType, clawConfig.roles.size
         )
 
         // ── Step 4: Hardware availability ───────────────────────────────────
@@ -377,11 +426,55 @@ class NexaNpuEngine(
  * These values control the Nexa SDK session parameters.
  */
 data class NexaModelConfig(
-    val modelType:      String = "omnineural",
-    val maxTokens:      Int    = 2048,
-    val enableThinking: Boolean = true,
-    val temperature:    Float  = 0.7f,
-    val topP:           Float  = 0.95f,
-    val quantization:   String = "q4_0",
-    val pluginId:       String = "npu"
+    val modelType:         String          = "omnineural",
+    val modelName:         String          = "OmniNeural-4B",
+    val maxTokens:         Int             = 4096,
+    val enableThinking:    Boolean         = true,
+    val temperature:       Float           = 0.6f,
+    val topP:              Float           = 0.92f,
+    val topK:              Int             = 40,
+    val repetitionPenalty: Float           = 1.15f,
+    val quantization:      String          = "q4_0",
+    val pluginId:          String          = "npu",
+    val npuSession:        NpuSessionConfig = NpuSessionConfig(),
+    val generation:        GenerationConfig = GenerationConfig(),
+    val roles:             Map<String, RoleConfig> = emptyMap()
+)
+
+/**
+ * NPU-specific hardware session parameters.
+ * Maps to the `npu_config` block in `claw_config.json`.
+ */
+data class NpuSessionConfig(
+    val device:              String  = "Snapdragon_8_Elite",
+    val soc:                 String  = "sm8750",
+    val precision:           String  = "int4",
+    val runtime:             String  = "hexagon",
+    val hexagonVersion:      String  = "v79",
+    val powerProfile:        String  = "balanced",
+    val cacheCompiledGraphs: Boolean = true,
+    val numThreads:          Int     = 4,
+    val batchSize:           Int     = 1,
+    val contextWindow:       Int     = 4096,
+    val kvCacheType:         String  = "int8"
+)
+
+/**
+ * Token generation settings.
+ * Maps to the `generation` block in `claw_config.json`.
+ */
+data class GenerationConfig(
+    val stopTokens: List<String> = listOf("<|end|>", "</s>"),
+    val stream:     Boolean      = true,
+    val seed:       Int          = -1
+)
+
+/**
+ * Per-role inference overrides (screen_observation, ocr, intent_detection, agentic).
+ * Maps to entries in the `roles` block in `claw_config.json`.
+ */
+data class RoleConfig(
+    val systemPrompt: String = "",
+    val maxTokens:    Int    = 2048,
+    val temperature:  Float  = 0.6f
 )
