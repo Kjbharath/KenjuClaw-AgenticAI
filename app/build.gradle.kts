@@ -64,6 +64,7 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        jniLibs.useLegacyPackaging = true
     }
 }
 
@@ -84,6 +85,7 @@ dependencies {
     implementation(libs.material)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.timber)
+    implementation(libs.nexa.core)
 
     // TODO: Uncomment when integrating GoogleGpuEngine real MediaPipe calls.
     //       Also add abiFilters { include("arm64-v8a") } to defaultConfig when enabling.
