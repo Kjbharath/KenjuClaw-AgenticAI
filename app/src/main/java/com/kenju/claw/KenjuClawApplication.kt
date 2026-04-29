@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.Build
 import com.kenju.claw.hardware.HardwareAccelConfig
 import com.kenju.claw.hardware.HardwareAccelInitializer
+import com.kenju.claw.orchestrator.ClawOrchestrator
 import com.kenju.claw.vault.ModelVaultManager
 import timber.log.Timber
 
@@ -34,6 +35,13 @@ class KenjuClawApplication : Application() {
 
         /** Globally accessible model vault manager (non-null after [onCreate]). */
         lateinit var modelVault: ModelVaultManager
+            private set
+
+        /**
+         * Globally accessible [ClawOrchestrator] singleton (non-null after [onCreate]).
+         * Call [ClawOrchestrator.initialize] before routing inference requests.
+         */
+        lateinit var orchestrator: ClawOrchestrator
             private set
     }
 
@@ -96,6 +104,12 @@ class KenjuClawApplication : Application() {
                 Timber.tag(TAG).e("Model vault directory could not be prepared!")
             }
         }
+
+        // ── 6. Orchestrator singleton ────────────────────────────────────────
+        orchestrator = ClawOrchestrator.getInstance(this)
+        Timber.tag(TAG).i(
+            "ClawOrchestrator ready — engines will initialize when ClawOrchestratorService starts."
+        )
     }
 
     // ────────────────────────────────────────────────────────────────────────

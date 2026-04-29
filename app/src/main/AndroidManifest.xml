@@ -97,6 +97,23 @@
                 android:value="agentic_npu_overlay" />
         </service>
 
+        <!-- =====================================================
+             CLAW ORCHESTRATOR SERVICE
+             Manages the dual-engine inference stack:
+               Engine 1 — NexaNpuEngine  (OmniNeural 4B / Hexagon NPU)
+               Engine 2 — GoogleGpuEngine (Gemma 4 E2B-IT / Adreno GPU)
+             Mode-switching is performed via startService() intents
+             using ClawOrchestratorService.setMode(context, mode).
+        ====================================================== -->
+        <service
+            android:name=".orchestrator.ClawOrchestratorService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="dual_engine_inference_orchestrator" />
+        </service>
+
         <!-- Boot receiver — restart overlay agent after device reboot -->
         <receiver
             android:name=".overlay.BootReceiver"
