@@ -27,6 +27,7 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.kenju.claw.KenjuClawApplication
+import com.kenju.claw.bootstrap.ClawBootstrapper
 import com.kenju.claw.orchestrator.ClawMode
 import com.kenju.claw.orchestrator.ClawOrchestratorService
 import com.kenju.claw.ui.theme.KenjuClawTheme
@@ -115,6 +116,15 @@ class AgentOverlayService : Service(),
         }
 
         chatController = ChatController(KenjuClawApplication.orchestrator, serviceScope)
+
+        // Initialize vault and orchestrator asynchronously
+        serviceScope.launch {
+            val bootResult = ClawBootstrapper(this@AgentOverlayService).bootstrap()
+            if (!bootResult.isReady) {
+                Timber.tag(TAG).e("ClawBootstrapper failed or vault is empty. Orchestrator init may fail.")
+            }
+            KenjuClawApplication.orchestrator.initialize()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
