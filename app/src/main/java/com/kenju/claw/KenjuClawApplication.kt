@@ -31,8 +31,8 @@ class KenjuClawApplication : Application() {
     companion object {
         private const val TAG = "KenjuClaw/App"
 
-        /** Expected SoC platform string for the Snapdragon 8 Elite. */
-        private const val EXPECTED_SOC = "sm8750"
+        /** Expected SoC platform strings for the Snapdragon 8 Elite (SM8750 / 'sun'). */
+        private val EXPECTED_SOCS = listOf("sm8750", "sun")
 
         /** Globally accessible hardware configuration (non-null after [onCreate]). */
         lateinit var hwConfig: HardwareAccelConfig
@@ -70,15 +70,15 @@ class KenjuClawApplication : Application() {
 
         // ── 2. SoC detection ────────────────────────────────────────────────
         val detectedSoc = detectSoc()
-        val isTargetHardware = detectedSoc.contains(EXPECTED_SOC, ignoreCase = true)
+        val isTargetHardware = EXPECTED_SOCS.any { detectedSoc.contains(it, ignoreCase = true) }
 
         if (isTargetHardware) {
             Timber.tag(TAG).i("Target hardware confirmed: %s (Snapdragon 8 Elite)", detectedSoc)
         } else {
             Timber.tag(TAG).w(
-                "Non-target SoC detected: '%s'. Expected '%s'. " +
+                "Non-target SoC detected: '%s'. Expected one of %s. " +
                 "Hardware-accelerated paths will attempt best-effort fallbacks.",
-                detectedSoc, EXPECTED_SOC
+                detectedSoc, EXPECTED_SOCS
             )
         }
 

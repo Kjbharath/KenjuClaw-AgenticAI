@@ -39,12 +39,21 @@ object HardwareAccelInitializer {
     private const val LIB_QNN_SYSTEM      = "libQnnSystem.so"
     private const val LIB_OPENCL          = "libOpenCL.so"
 
-    /** Ordered vendor paths to search for Qualcomm runtime libraries. */
+    /**
+     * Ordered vendor paths to search for Qualcomm runtime libraries.
+     * Note: If the OEM does not expose these in public vendor paths (or restricts
+     * them via Android 14+ linker namespaces), they WILL fail to load. In that case,
+     * the .so files MUST be bundled inside the app's `jniLibs/arm64-v8a/` directory.
+     */
     private val VENDOR_LIB_PATHS = listOf(
         "/vendor/lib64/",
         "/system/vendor/lib64/",
+        "/vendor/lib64/hw/",
+        "/vendor/lib64/qcom/",
         "/system/lib64/",
-        "/odm/lib64/"
+        "/odm/lib64/",
+        "/apex/com.android.vndk.v35/lib64/",
+        "/apex/com.android.vndk.v34/lib64/"
     )
 
     // ────────────────────────────────────────────────────────────────────────
