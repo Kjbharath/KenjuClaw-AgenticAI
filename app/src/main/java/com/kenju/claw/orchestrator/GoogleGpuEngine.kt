@@ -74,8 +74,8 @@ class GoogleGpuEngine(
      * Steps (stubbed — replace with real MediaPipe Task API calls):
      *  1. Verify model file is present in the vault.
      *  2. Select GPU backend: Vulkan preferred, OpenCL as fallback.
-     *  3. Build [LlmInference] options with the resolved model path and GPU backend.
-     *  4. Create [LlmInference] session (triggers model weight loading on GPU VRAM).
+     *  3. Build `LlmInference` options with the resolved model path and GPU backend.
+     *  4. Create `LlmInference` session (triggers model weight loading on GPU VRAM).
      *  5. Transition state to [EngineState.READY].
      */
     override suspend fun initialize(): Boolean = withContext(Dispatchers.Default) {

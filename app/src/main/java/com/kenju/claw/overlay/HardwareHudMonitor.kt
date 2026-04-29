@@ -21,7 +21,7 @@ import java.io.File
  * | RAM usage          | [ActivityManager.getMemoryInfo]                                |
  * | GPU load           | `/sys/class/kgsl/kgsl-3d0/gpu_busy_percentage` (Adreno sysfs) |
  * | NPU busy           | `/sys/devices/…/npu_busy` (Hexagon sysfs, vendor-specific)    |
- * | Skin temperature   | `/sys/class/thermal/thermal_zone*/temp` zone scan              |
+ * | Skin temperature   | `/sys/class/thermal/thermal_zone[*]/temp` zone scan            |
  * | CPU freq           | `/sys/devices/system/cpu/cpufreq/policy0/scaling_cur_freq`     |
  *
  * All sysfs paths may return `null` on non-rooted devices or emulators;

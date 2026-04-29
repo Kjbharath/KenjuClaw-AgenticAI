@@ -1,9 +1,14 @@
 package com.kenju.claw.orchestrator
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.IBinder
+import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -55,10 +60,19 @@ class ClawOrchestratorService : Service() {
     override fun onCreate() {
         super.onCreate()
         Timber.tag(TAG).i("ClawOrchestratorService created.")
+        createNotificationChannel()
         orchestrator = ClawOrchestrator.getInstance(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // API 34+ requirement: must call startForeground() within ~10 s of
+        // startForegroundService(), or the system kills this process.
+        startForeground(
+            NOTIFICATION_ID,
+            buildNotification(),
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+        )
+
         val action = intent?.action ?: ACTION_START
 
         Timber.tag(TAG).d("onStartCommand: action=%s", action)
@@ -115,11 +129,39 @@ class ClawOrchestratorService : Service() {
     }
 
     // ────────────────────────────────────────────────────────────────────────
+    // Notification — required for startForeground() on API 34+
+    // ────────────────────────────────────────────────────────────────────────
+
+    private fun createNotificationChannel() {
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            "KenjuClaw Inference Engine",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = "Persistent channel for the KenjuClaw dual-engine inference orchestrator"
+            setShowBadge(false)
+        }
+        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+    }
+
+    private fun buildNotification(): Notification {
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("KenjuClaw Engine")
+            .setContentText("Inference orchestrator active")
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setOngoing(true)
+            .setSilent(true)
+            .build()
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
     // Companion — static factory methods and intent constants
     // ────────────────────────────────────────────────────────────────────────
 
     companion object {
         private const val TAG = "KenjuClaw/OrchestratorSvc"
+        private const val CHANNEL_ID      = "kenju_claw_orchestrator"
+        private const val NOTIFICATION_ID = 1002
 
         const val ACTION_START    = "com.kenju.claw.orchestrator.ACTION_START"
         const val ACTION_SET_MODE = "com.kenju.claw.orchestrator.ACTION_SET_MODE"
