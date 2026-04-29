@@ -7,6 +7,7 @@ import com.kenju.claw.vault.ModelVaultManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import timber.log.Timber
+import com.google.mediapipe.tasks.genai.llminference.LlmInference
 
 /**
  * GoogleGpuEngine
@@ -64,6 +65,8 @@ class GoogleGpuEngine(
     override var state: EngineState = EngineState.UNINITIALIZED
         private set
 
+    private var llmSession: LlmInference? = null
+
     // ────────────────────────────────────────────────────────────────────────
     // Initialization
     // ────────────────────────────────────────────────────────────────────────
@@ -102,31 +105,29 @@ class GoogleGpuEngine(
             Timber.tag(TAG).w("No GPU backend available — engine will run in stub/CPU-fallback mode.")
         }
 
-        // ── Steps 3 + 4: MediaPipe session creation (STUBBED) ────────────────
-        // TODO: Replace with real MediaPipe LLM Inference calls, e.g.:
-        //
-        //   val options = LlmInference.LlmInferenceOptions.builder()
-        //       .setModelPath(modelFile.absolutePath)
-        //       .setMaxTokens(request.maxTokens)
-        //       .setPreferredBackend(
-        //           if (backend == GpuBackend.VULKAN)
-        //               LlmInference.Backend.GPU  // Vulkan
-        //           else
-        //               LlmInference.Backend.CPU  // fallback
-        //       )
-        //       .build()
-        //   llmSession = LlmInference.createFromOptions(context, options)
-        //
-        val stubSuccess = stubInitializeSession(modelFile.absolutePath, backend)
+        // ── Steps 3 + 4: MediaPipe session creation ──────────────────────────
+        try {
+            val backendType = if (backend == GpuBackend.VULKAN) {
+                LlmInference.Backend.GPU
+            } else {
+                LlmInference.Backend.CPU
+            }
 
-        return@withContext if (stubSuccess) {
+            val options = LlmInference.LlmInferenceOptions.builder()
+                .setModelPath(modelFile.absolutePath)
+                .setMaxTokens(2048)
+                .setPreferredBackend(backendType)
+                .build()
+                
+            llmSession = LlmInference.createFromOptions(context, options)
+
             state = EngineState.READY
-            Timber.tag(TAG).i("%s initialized and READY.", displayName)
-            true
-        } else {
+            Timber.tag(TAG).i("%s initialized and READY. LlmInference active.", displayName)
+            return@withContext true
+        } catch (e: Exception) {
             state = EngineState.ERROR
-            Timber.tag(TAG).e("%s initialization FAILED.", displayName)
-            false
+            Timber.tag(TAG).e(e, "%s initialization FAILED.", displayName)
+            return@withContext false
         }
     }
 
@@ -160,26 +161,36 @@ class GoogleGpuEngine(
             )
 
             return@withContext try {
-                // TODO: Replace with real MediaPipe LLM inference call, e.g.:
-                //
-                //   val fullPrompt = buildGemmaPrompt(
-                //       system = request.systemPrompt,
-                //       user   = request.prompt,
-                //       tools  = request.functionSchema
-                //   )
-                //   val response = llmSession.generateResponse(fullPrompt)
-                //   val functionCall = parseFunctionCallJson(response)
-                //
-                val response = stubInfer(request)
+                val session = llmSession ?: throw IllegalStateException("LlmInference session is null")
+                
+                // In Gemma, we format the prompt specifically for instruction following
+                // E2B usually prefers simple user prompts or function-call structured prompts
+                val fullPrompt = if (isFunctionCall) {
+                    "System: You are an agentic AI that returns JSON function calls. Available schema: ${request.functionSchema}\nUser: ${request.prompt}\nAssistant:"
+                } else {
+                    "<start_of_turn>user\n${request.prompt}<end_of_turn>\n<start_of_turn>model\n"
+                }
+                
+                val responseText = session.generateResponse(fullPrompt)
+                
+                // Extremely simple JSON extraction for function calling
+                var extractedJson: String? = null
+                if (isFunctionCall) {
+                    val jsonStart = responseText.indexOf("{")
+                    val jsonEnd = responseText.lastIndexOf("}")
+                    if (jsonStart != -1 && jsonEnd != -1 && jsonEnd > jsonStart) {
+                        extractedJson = responseText.substring(jsonStart, jsonEnd + 1)
+                    }
+                }
 
                 InferenceResult(
                     requestId       = request.requestId,
                     engine          = engineId,
-                    text            = response.text,
-                    functionCall    = response.functionCallJson,
+                    text            = responseText,
+                    functionCall    = extractedJson,
                     confidence      = FULL_CONFIDENCE,
-                    promptTokens    = response.promptTokens,
-                    generatedTokens = response.generatedTokens,
+                    promptTokens    = fullPrompt.length / 4,
+                    generatedTokens = responseText.length / 4,
                     latencyMs       = System.currentTimeMillis() - start
                 )
             } catch (e: Exception) {
@@ -195,63 +206,17 @@ class GoogleGpuEngine(
     override suspend fun shutdown(): Unit = withContext(Dispatchers.Default) {
         if (state == EngineState.SHUTDOWN) return@withContext
         Timber.tag(TAG).i("Shutting down %s…", displayName)
-        // TODO: llmSession.close()
+        
+        try {
+            llmSession?.close()
+        } catch (e: Exception) {
+            Timber.tag(TAG).w(e, "Error closing LlmInference session")
+        }
+        llmSession = null
+        
         state = EngineState.SHUTDOWN
         Timber.tag(TAG).i("%s shut down.", displayName)
     }
-
-    // ────────────────────────────────────────────────────────────────────────
-    // Stub implementations (replace with real MediaPipe calls)
-    // ────────────────────────────────────────────────────────────────────────
-
-    private suspend fun stubInitializeSession(modelPath: String, backend: GpuBackend): Boolean =
-        withContext(Dispatchers.Default) {
-            // Simulate GPU weight loading latency (~2 s for Gemma 4 E2B-IT on Adreno 830)
-            kotlinx.coroutines.delay(STUB_INIT_DELAY_MS)
-            Timber.tag(TAG).d(
-                "[STUB] LlmInference session created — model: %s, backend: %s",
-                modelPath, backend.name
-            )
-            true
-        }
-
-    private data class StubGpuResponse(
-        val text: String,
-        val functionCallJson: String?,
-        val promptTokens: Int,
-        val generatedTokens: Int
-    )
-
-    private suspend fun stubInfer(request: InferenceRequest): StubGpuResponse =
-        withContext(Dispatchers.Default) {
-            // Simulate GPU inference latency (~20 ms per token for Gemma 4 E2B-IT FP16)
-            val estimatedTokens = minOf(request.maxTokens, 128)
-            kotlinx.coroutines.delay(estimatedTokens * STUB_TOKEN_LATENCY_MS)
-
-            val isFunctionCall = request.functionSchema != null
-            val stubText = if (isFunctionCall) {
-                "I've evaluated your request to \"${request.prompt}\" and I'll trigger the appropriate tool now."
-            } else {
-                val responses = listOf(
-                    "I am the Gemma 4 E2B-IT model running on your Adreno GPU. I can handle complex reasoning!",
-                    "Thinking deeply about \"${request.prompt}\"... Here is a detailed, multi-step breakdown.",
-                    "Hi! I'm using the Adreno 830 GPU to give you the most powerful response possible."
-                )
-                responses.random()
-            }
-            val stubFunctionCallJson = if (isFunctionCall) {
-                """{"name":"stub_tool","arguments":{"query":"${request.prompt.take(40)}"}}"""
-            } else {
-                null
-            }
-
-            StubGpuResponse(
-                text            = stubText,
-                functionCallJson = stubFunctionCallJson,
-                promptTokens    = request.prompt.length / 4,
-                generatedTokens = estimatedTokens
-            )
-        }
 
     // ────────────────────────────────────────────────────────────────────────
     // Helpers

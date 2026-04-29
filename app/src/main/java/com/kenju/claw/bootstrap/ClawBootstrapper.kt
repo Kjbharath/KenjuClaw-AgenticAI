@@ -89,6 +89,9 @@ class ClawBootstrapper(private val context: Context) {
         // ── 3. Sync claw_config.json from res/raw ───────────────────────────
         val configSynced = syncConfig(modelDir)
 
+        // ── 3.5. Ingest GPU model from Download ─────────────────────────────
+        val gpuIngested = ingestGpuModel(vaultDir)
+
         // ── 4. Validate / create nexa.manifest ──────────────────────────────
         val manifestReady = ensureNexaManifest(modelDir)
 
@@ -234,6 +237,49 @@ class ClawBootstrapper(private val context: Context) {
             totalBytesMoved = totalBytes,
             sourceDeleted   = sourceDirDeleted
         )
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Step 2.5 — GPU Model ingestion
+    // ────────────────────────────────────────────────────────────────────────
+
+    private fun ingestGpuModel(vaultDir: File): Boolean {
+        val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val gpuModelFileName = "gemma_4_e2b.bin"
+        
+        // Check root Download directory
+        var srcFile = File(downloadDir, gpuModelFileName)
+        
+        // If not found in root, check in Gemma-4-E2B subdirectory
+        if (!srcFile.exists()) {
+            srcFile = File(File(downloadDir, "Gemma-4-E2B"), gpuModelFileName)
+        }
+
+        if (!srcFile.exists()) {
+            Timber.tag(TAG).w("GPU model not found in Download directory: %s", gpuModelFileName)
+            return false
+        }
+
+        val destFile = File(vaultDir, gpuModelFileName)
+
+        // Skip if already present and same size
+        if (destFile.exists() && destFile.length() == srcFile.length()) {
+            Timber.tag(TAG).d("GPU model already present, skipping: %s (%s)",
+                srcFile.name, formatBytes(srcFile.length()))
+            return true
+        }
+
+        return try {
+            Timber.tag(TAG).i("Moving GPU model: %s → %s", srcFile.absolutePath, destFile.absolutePath)
+            copyFile(srcFile, destFile)
+            if (srcFile.delete()) {
+                Timber.tag(TAG).d("  ✓ Source deleted: %s", srcFile.name)
+            }
+            true
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Failed to move GPU model: %s", srcFile.name)
+            false
+        }
     }
 
     // ────────────────────────────────────────────────────────────────────────

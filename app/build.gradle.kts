@@ -24,6 +24,10 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        ndk {
+            abiFilters.add("arm64-v8a")
+        }
     }
 
     buildTypes {
@@ -87,10 +91,8 @@ dependencies {
     implementation(libs.timber)
     implementation(libs.nexa.core)
 
-    // TODO: Uncomment when integrating GoogleGpuEngine real MediaPipe calls.
-    //       Also add abiFilters { include("arm64-v8a") } to defaultConfig when enabling.
-    //       Requires: libs.mediapipe.tasks.genai (declared in libs.versions.toml)
-    // implementation(libs.mediapipe.tasks.genai)
+    // MediaPipe LLM Inference
+    implementation(libs.mediapipe.tasks.genai)
 
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
