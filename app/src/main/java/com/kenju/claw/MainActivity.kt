@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.kenju.claw.hardware.HardwareAccelConfig
 import com.kenju.claw.ui.theme.KenjuClawTheme
@@ -148,13 +149,19 @@ private fun StatusRow(label: String, value: String) {
     Row(
         modifier            = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment   = Alignment.CenterVertically
+        verticalAlignment   = Alignment.Top
     ) {
-        Text(text = label, style = MaterialTheme.typography.bodyMedium)
         Text(
-            text  = value,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            text = label, 
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(end = 16.dp)
+        )
+        Text(
+            text      = value,
+            style     = MaterialTheme.typography.bodySmall,
+            color     = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.End,
+            modifier  = Modifier.weight(1f)
         )
     }
 }
