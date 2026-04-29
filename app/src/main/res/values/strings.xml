@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">KenjuClaw</string>
+    <string name="overlay_service_name">KenjuClaw Agent Overlay</string>
+    <string name="permission_overlay_rationale">KenjuClaw requires the Draw Over Other Apps permission to display the agentic overlay interface above all windows.</string>
+    <string name="permission_storage_rationale">KenjuClaw requires All Files Access to ingest private AI model files from external storage.</string>
+</resources>

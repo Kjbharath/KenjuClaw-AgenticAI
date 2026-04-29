@@ -1,0 +1,34 @@
+# Android
+build/
+*.iml
+.gradle
+local.properties
+.navigation
+captures/
+.externalNativeBuild
+.cxx
+.DS_Store
+*.keystore
+!debug.keystore
+
+# Kotlin
+*.kotlin_module
+
+# Gradle
+.gradle/
+build/
+
+# Hardware / Cache
+app/src/main/res/xml/qnn_cache/
+qnn_cache/
+
+# IDE
+.idea/
+*.iws
+*.out
+.vscode/
+
+# Models (too large for GitHub usually)
+app/src/main/java/com/kenju/claw/vault/models/
+*.gguf
+*.bin

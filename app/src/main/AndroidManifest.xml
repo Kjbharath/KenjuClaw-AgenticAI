@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- =========================================================
+         OVERLAY — Agentic UI rendered above all other windows
+    ========================================================== -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- =========================================================
+         FOREGROUND SERVICE — Persistent agent background process
+         FOREGROUND_SERVICE_SPECIAL_USE is mandatory on API 34+
+         when a foreground service type is not one of the standard
+         types (camera/location/mic/media/etc.).
+    ========================================================== -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- =========================================================
+         STORAGE — Private model ingestion
+         MANAGE_EXTERNAL_STORAGE grants broad all-files access
+         (requires Google Play declaration / side-loaded APK).
+         READ/WRITE_EXTERNAL_STORAGE kept for legacy path fallbacks.
+    ========================================================== -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29"
+        tools:ignore="ScopedStorage" />
+
+    <!-- =========================================================
+         NETWORK — Model fetching / remote inference endpoints
+    ========================================================== -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- =========================================================
+         HARDWARE FEATURES — S25 Ultra / Snapdragon 8 Elite
+    ========================================================== -->
+    <uses-feature android:name="android.hardware.vulkan.level"    android:required="false" />
+    <uses-feature android:name="android.hardware.vulkan.version"  android:required="false" />
+
+    <!-- Queries required when targeting MANAGE_EXTERNAL_STORAGE -->
+    <queries>
+        <intent>
+            <action android:name="android.settings.MANAGE_APP_ALL_FILES_ACCESS_PERMISSION" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.ACTION_MANAGE_OVERLAY_PERMISSION" />
+        </intent>
+    </queries>
+
+    <application
+        android:name=".KenjuClawApplication"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.KenjuClaw"
+        android:hardwareAccelerated="true"
+        android:requestLegacyExternalStorage="false"
+        tools:targetApi="35">
+
+        <!-- Main entry-point activity -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.KenjuClaw"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- =====================================================
+             AGENTIC OVERLAY SERVICE
+             Draws the KenjuClaw HUD over any foreground window.
+             type="specialUse" covers NPU/GPU inference overlays
+             that don't fit the standard service-type taxonomy.
+        ====================================================== -->
+        <service
+            android:name=".overlay.AgentOverlayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="agentic_npu_overlay" />
+        </service>
+
+        <!-- Boot receiver — restart overlay agent after device reboot -->
+        <receiver
+            android:name=".overlay.BootReceiver"
+            android:exported="true"
+            android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
+            <intent-filter android:priority="100">
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- =====================================================
+             MODEL VAULT FILE PROVIDER
+             Serves private model files (GGUF, .bin) to inference
+             engine services via content:// URIs.
+             Authority must match ModelVaultManager.FILE_PROVIDER_AUTHORITY.
+             Path roots are declared in res/xml/file_paths.xml.
+        ====================================================== -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.kenju.claw.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+    </application>
+
+</manifest>

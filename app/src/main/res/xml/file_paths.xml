@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    file_paths.xml — FileProvider path configuration for KenjuClaw.
+
+    Grants content:// URI access to files inside the app's private filesDir.
+    The `name` attribute is the virtual path segment that appears in the URI;
+    the `path` attribute is relative to Context.filesDir.
+
+    URI pattern produced:
+      content://com.kenju.claw.fileprovider/models/<filename>
+
+    Only paths listed here can be shared via FileProvider.getUriForFile().
+-->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        models/ — private model vault
+        Maps to: <context.filesDir>/models/
+        Used by ModelVaultManager.getModelUri() to serve GGUF and .bin files
+        to inference engine services via ContentResolver.
+    -->
+    <files-path
+        name="models"
+        path="models/" />
+
+    <!--
+        qnn_cache/ — compiled Hexagon graph artifacts
+        Maps to: <context.filesDir>/qnn_cache/
+        Exposed so that a bound NPU delegate service can re-read a cached graph
+        without re-compiling from the original GGUF.
+    -->
+    <files-path
+        name="qnn_cache"
+        path="qnn_cache/" />
+
+</paths>

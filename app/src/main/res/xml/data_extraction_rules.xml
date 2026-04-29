@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    data_extraction_rules.xml
+    Defines which files to include or exclude from cloud backup / device-to-device transfer.
+    Model caches (qnn_cache/) are excluded — they contain device-specific compiled artifacts.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="qnn_cache/" />
+        <exclude domain="cache" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="qnn_cache/" />
+    </device-transfer>
+</data-extraction-rules>
