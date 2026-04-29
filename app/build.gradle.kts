@@ -85,6 +85,11 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.timber)
 
+    // TODO: Uncomment when integrating GoogleGpuEngine real MediaPipe calls.
+    //       Also add abiFilters { include("arm64-v8a") } to defaultConfig when enabling.
+    //       Requires: libs.mediapipe.tasks.genai (declared in libs.versions.toml)
+    // implementation(libs.mediapipe.tasks.genai)
+
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 }

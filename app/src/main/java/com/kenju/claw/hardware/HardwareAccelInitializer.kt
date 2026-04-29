@@ -1,7 +1,6 @@
 package com.kenju.claw.hardware
 
 import android.content.Context
-import android.os.Build
 import com.kenju.claw.BuildConfig
 import timber.log.Timber
 import java.io.File
@@ -212,10 +211,25 @@ object HardwareAccelInitializer {
 
     /**
      * Attempts to load a native library from an absolute path.
-     * Falls back to [System.loadLibrary] (strips 'lib' prefix and '.so' suffix) if path is null.
+     *
+     * ## Security note — why System.load() is intentional here
+     *
+     * The Qualcomm QNN runtime libraries (`libQnnHtp.so`, `libQnnSystem.so`,
+     * `libQnnHtpPrepare.so`) are **OEM-shipped firmware** that live in the device's
+     * vendor partition (`/vendor/lib64/`). They are NOT bundled inside this APK.
+     * `System.loadLibrary()` can only resolve libraries from the app's own native
+     * lib directory — it cannot reach vendor-partition paths.
+     *
+     * The absolute path passed here is resolved **exclusively** from the compile-time
+     * [VENDOR_LIB_PATHS] allowlist (no user-controlled input), so there is no path
+     * traversal or injection risk. Lint suppression is intentional and documented.
+     *
+     * Falls back to [System.loadLibrary] (strips 'lib' prefix and '.so' suffix) if
+     * path is null (e.g. the library was not found in any vendor path).
      *
      * @return True if the library loaded successfully.
      */
+    @Suppress("UnsafeDynamicallyLoadedCode") // justified above — vendor firmware path only
     private fun tryLoadLib(absolutePath: String?, libName: String): Boolean {
         return try {
             if (absolutePath != null) {

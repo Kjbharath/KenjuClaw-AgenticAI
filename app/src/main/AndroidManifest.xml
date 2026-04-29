@@ -66,8 +66,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.KenjuClaw"
         android:hardwareAccelerated="true"
-        android:requestLegacyExternalStorage="false"
-        tools:targetApi="35">
+        android:requestLegacyExternalStorage="false">
 
         <!-- Main entry-point activity -->
         <activity
