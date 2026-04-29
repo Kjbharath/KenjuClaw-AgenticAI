@@ -2,6 +2,7 @@ package com.kenju.claw.hardware
 
 import android.content.Context
 import android.os.Build
+import com.kenju.claw.BuildConfig
 import timber.log.Timber
 import java.io.File
 

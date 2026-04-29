@@ -2,13 +2,10 @@ package com.kenju.claw.overlay
 
 import android.app.ActivityManager
 import android.content.Context
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import timber.log.Timber
-import java.io.BufferedReader
 import java.io.File
-import java.io.InputStreamReader
 
 /**
  * HardwareHudMonitor
@@ -150,7 +147,7 @@ class HardwareHudMonitor(
         private const val GPU_BUSY_PATH = "/sys/class/kgsl/kgsl-3d0/gpu_busy_percentage"
 
         // Hexagon NPU sysfs — vendor-specific, may not be exposed on all ROMs
-        private const val NPU_BUSY_PATH: String? = null   // TODO: validate path on S25 Ultra
+        private val NPU_BUSY_PATH: String? = null   // TODO: validate path on S25 Ultra
 
         // Big core cluster freq
         private const val CPU_FREQ_PATH = "/sys/devices/system/cpu/cpufreq/policy7/scaling_cur_freq"
