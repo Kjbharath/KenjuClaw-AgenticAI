@@ -87,6 +87,10 @@ class AgentOverlayService : Service(),
     // ── HUD monitor ───────────────────────────────────────────────────────────
 
     private lateinit var hudMonitor: HardwareHudMonitor
+    
+    // ── Chat Controller ───────────────────────────────────────────────────────
+    
+    private lateinit var chatController: ChatController
 
     // ── Coroutine scope ───────────────────────────────────────────────────────
 
@@ -109,6 +113,8 @@ class AgentOverlayService : Service(),
         hudMonitor = HardwareHudMonitor(context = this) { snapshot ->
             uiState.hud = snapshot
         }
+        
+        chatController = ChatController(KenjuClawApplication.orchestrator, serviceScope)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -172,10 +178,11 @@ class AgentOverlayService : Service(),
             setContent {
                 KenjuClawTheme {
                     ClawOverlayContent(
-                        state        = uiState,
-                        onTap        = { uiState.panelExpanded = !uiState.panelExpanded },
-                        onDrag       = { dx, dy -> repositionWindow(dx, dy) },
-                        onModeSelect = { mode -> switchMode(mode) }
+                        state          = uiState,
+                        chatController = chatController,
+                        onTap          = { uiState.panelExpanded = !uiState.panelExpanded },
+                        onDrag         = { dx, dy -> repositionWindow(dx, dy) },
+                        onModeSelect   = { mode -> switchMode(mode) }
                     )
                 }
             }

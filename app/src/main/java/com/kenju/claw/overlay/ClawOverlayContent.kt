@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -37,19 +39,24 @@ import com.kenju.claw.orchestrator.ClawMode
  */
 @Composable
 fun ClawOverlayContent(
-    state:        OverlayUiState,
-    onTap:        () -> Unit,
-    onDrag:       (Float, Float) -> Unit,
-    onModeSelect: (ClawMode) -> Unit
+    state:          OverlayUiState,
+    chatController: ChatController,
+    onTap:          () -> Unit,
+    onDrag:         (Float, Float) -> Unit,
+    onModeSelect:   (ClawMode) -> Unit
 ) {
+    val messages by chatController.messages.collectAsState()
+
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
 
         // ── Selector panel — animates in above the FAB ───────────────────────
         ClawPanel(
-            visible      = state.panelExpanded,
-            activeMode   = state.activeMode,
-            hud          = state.hud,
-            onModeSelect = onModeSelect
+            visible       = state.panelExpanded,
+            activeMode    = state.activeMode,
+            hud           = state.hud,
+            messages      = messages,
+            onSendMessage = chatController::sendMessage,
+            onModeSelect  = onModeSelect
         )
 
         Spacer(modifier = Modifier.height(4.dp))
