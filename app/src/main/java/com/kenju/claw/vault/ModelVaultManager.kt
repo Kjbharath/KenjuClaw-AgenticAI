@@ -15,8 +15,14 @@ import java.io.File
  * ```
  * <context.filesDir>/
  * └── models/
- *     ├── omnineural_4b.gguf      ← Hexagon NPU model  (GGUF / llama.cpp format)
- *     └── gemma_4_e2b.bin         ← Adreno GPU  model  (TFLite / flat-buffer format)
+ *     ├── OmniNeural-4B/           ← Hexagon NPU model  (sharded safetensors + Nexa manifest)
+ *     │   ├── config.json
+ *     │   ├── claw_config.json     ← synced from res/raw by ClawBootstrapper
+ *     │   ├── nexa.manifest        ← Nexa SDK loader descriptor (plugin_id = "npu")
+ *     │   ├── tokenizer.json
+ *     │   ├── model-00001-of-NNNNN.safetensors
+ *     │   └── …
+ *     └── gemma_4_e2b.bin          ← Adreno GPU model  (TFLite / flat-buffer format)
  * ```
  *
  * ## Responsibilities
@@ -57,7 +63,17 @@ class ModelVaultManager(private val context: Context) {
 
         // ── Model file descriptors ───────────────────────────────────────────
 
-        /** Hexagon NPU model — GGUF format, consumed via llama.cpp / QNN HTP delegate. */
+        /** Hexagon NPU model directory — sharded safetensors + nexa.manifest. */
+        const val MODEL_NPU_DIR = "OmniNeural-4B"
+
+        /** Nexa SDK manifest inside the NPU model directory. */
+        const val NEXA_MANIFEST = "nexa.manifest"
+
+        /** Config file synced from res/raw by ClawBootstrapper. */
+        const val CLAW_CONFIG = "claw_config.json"
+
+        /** @deprecated Kept for backward compat — use [MODEL_NPU_DIR] instead. */
+        @Deprecated("Use MODEL_NPU_DIR for sharded model layout", replaceWith = ReplaceWith("MODEL_NPU_DIR"))
         const val MODEL_NPU_FILENAME = "omnineural_4b.gguf"
 
         /** Adreno GPU model — flat-buffer format, consumed via TFLite GPU delegate. */
@@ -109,7 +125,7 @@ class ModelVaultManager(private val context: Context) {
      * @return A [VaultVerificationResult] describing the state of each model.
      */
     fun verifyModels(): VaultVerificationResult {
-        val npuStatus = checkModel(MODEL_NPU_FILENAME, ModelRole.NPU)
+        val npuStatus = checkNpuModelDir()
         val gpuStatus = checkModel(MODEL_GPU_FILENAME, ModelRole.GPU)
 
         val result = VaultVerificationResult(
@@ -183,8 +199,20 @@ class ModelVaultManager(private val context: Context) {
      */
     fun getModelFile(filename: String): File = File(vaultDir, filename)
 
-    /** Direct [File] reference for the NPU model. */
-    val npuModelFile: File get() = getModelFile(MODEL_NPU_FILENAME)
+    /** Directory containing OmniNeural-4B shards, config, and nexa.manifest. */
+    val npuModelDir: File get() = File(vaultDir, MODEL_NPU_DIR)
+
+    /** Direct [File] reference for the nexa.manifest inside the NPU model dir. */
+    val npuManifestFile: File get() = File(npuModelDir, NEXA_MANIFEST)
+
+    /** Direct [File] reference for the claw_config.json inside the NPU model dir. */
+    val npuConfigFile: File get() = File(npuModelDir, CLAW_CONFIG)
+
+    /**
+     * @deprecated Use [npuModelDir] for the sharded layout.
+     */
+    @Deprecated("Use npuModelDir for sharded model layout", replaceWith = ReplaceWith("npuModelDir"))
+    val npuModelFile: File get() = npuModelDir
 
     /** Direct [File] reference for the GPU model. */
     val gpuModelFile: File get() = getModelFile(MODEL_GPU_FILENAME)
@@ -193,6 +221,9 @@ class ModelVaultManager(private val context: Context) {
     // Private helpers
     // ────────────────────────────────────────────────────────────────────────
 
+    /**
+     * Checks a single model file (used for GPU model).
+     */
     private fun checkModel(filename: String, role: ModelRole): ModelStatus {
         val file = File(vaultDir, filename)
 
@@ -253,6 +284,78 @@ class ModelVaultManager(private val context: Context) {
             }
         }
     }
+
+    /**
+     * Checks the NPU sharded model directory.
+     * Validates: directory exists, nexa.manifest present, at least one shard present.
+     */
+    private fun checkNpuModelDir(): ModelStatus {
+        val dir = npuModelDir
+        val manifest = npuManifestFile
+
+        if (!dir.exists() || !dir.isDirectory) {
+            Timber.tag(TAG).w("[NPU] Model directory missing: %s", dir.absolutePath)
+            return ModelStatus(
+                filename    = MODEL_NPU_DIR,
+                role        = ModelRole.NPU,
+                isPresent   = false,
+                isReadable  = false,
+                sizeBytes   = 0L,
+                isValid     = false,
+                statusLabel = "DIR MISSING"
+            )
+        }
+
+        if (!manifest.exists()) {
+            Timber.tag(TAG).w("[NPU] nexa.manifest missing in: %s", dir.absolutePath)
+            return ModelStatus(
+                filename    = MODEL_NPU_DIR,
+                role        = ModelRole.NPU,
+                isPresent   = true,
+                isReadable  = true,
+                sizeBytes   = 0L,
+                isValid     = false,
+                statusLabel = "NO MANIFEST"
+            )
+        }
+
+        val shards = dir.listFiles()?.filter {
+            it.name.endsWith(".safetensors") || it.name.endsWith(".bin")
+        } ?: emptyList()
+
+        if (shards.isEmpty()) {
+            Timber.tag(TAG).w("[NPU] No weight shards found in: %s", dir.absolutePath)
+            return ModelStatus(
+                filename    = MODEL_NPU_DIR,
+                role        = ModelRole.NPU,
+                isPresent   = true,
+                isReadable  = true,
+                sizeBytes   = 0L,
+                isValid     = false,
+                statusLabel = "NO SHARDS"
+            )
+        }
+
+        val totalBytes = shards.sumOf { it.length() }
+        val shardCount = shards.size
+
+        Timber.tag(TAG).i(
+            "[NPU] OK — %s (%d shards, %.2f GB, manifest ✓)",
+            MODEL_NPU_DIR, shardCount, totalBytes / (1024.0 * 1024.0 * 1024.0)
+        )
+
+        return ModelStatus(
+            filename    = MODEL_NPU_DIR,
+            role        = ModelRole.NPU,
+            isPresent   = true,
+            isReadable  = true,
+            sizeBytes   = totalBytes,
+            isValid     = true,
+            statusLabel = "OK (%d shards, %.2f GB)".format(
+                shardCount, totalBytes / (1024.0 * 1024.0 * 1024.0)
+            )
+        )
+    }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -297,7 +400,7 @@ data class ModelStatus(
  * Which hardware backend a model targets.
  */
 enum class ModelRole {
-    /** Hexagon NPU (HTP v79) — GGUF / quantized format. */
+    /** Hexagon NPU (HTP v79) — sharded safetensors + Nexa manifest. */
     NPU,
     /** Adreno GPU — flat-buffer / TFLite format. */
     GPU

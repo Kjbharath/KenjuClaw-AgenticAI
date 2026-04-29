@@ -127,8 +127,8 @@
 
         <!-- =====================================================
              MODEL VAULT FILE PROVIDER
-             Serves private model files (GGUF, .bin) to inference
-             engine services via content:// URIs.
+             Serves private model files (safetensors shards, .bin)
+             to inference engine services via content:// URIs.
              Authority must match ModelVaultManager.FILE_PROVIDER_AUTHORITY.
              Path roots are declared in res/xml/file_paths.xml.
         ====================================================== -->

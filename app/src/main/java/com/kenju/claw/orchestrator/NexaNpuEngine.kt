@@ -1,12 +1,15 @@
 package com.kenju.claw.orchestrator
 
 import android.content.Context
+import com.kenju.claw.bootstrap.ClawBootstrapper
 import com.kenju.claw.hardware.HexagonNpuConfig
 import com.kenju.claw.hardware.InferencePrecision
 import com.kenju.claw.vault.ModelVaultManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import timber.log.Timber
+import java.io.File
 
 /**
  * NexaNpuEngine
@@ -16,13 +19,24 @@ import timber.log.Timber
  *
  * ## Model
  * - **Name:** OmniNeural 4B
- * - **File:** [ModelVaultManager.MODEL_NPU_FILENAME] (`omnineural_4b.gguf`)
- * - **Format:** GGUF — consumed via the Nexa SDK's llama.cpp / QNN-HTP delegate.
+ * - **Format:** Sharded safetensors (NOT GGUF) — loaded via the Nexa SDK manifest.
+ * - **Directory:** `<filesDir>/models/OmniNeural-4B/`
+ * - **Layout:**
+ *   ```
+ *   OmniNeural-4B/
+ *   ├── config.json
+ *   ├── claw_config.json       ← synced from res/raw by ClawBootstrapper
+ *   ├── nexa.manifest          ← Nexa SDK model descriptor (plugin_id = "npu")
+ *   ├── tokenizer.json
+ *   ├── model-00001-of-N.safetensors
+ *   └── …
+ *   ```
  *
  * ## Backend
- * - **SDK:** Nexa SDK (on-device NPU acceleration via QNN HTP delegate)
+ * - **SDK:** Nexa SDK (manifest-driven, on-device NPU acceleration)
  * - **Hardware:** Hexagon v79 DSP (HTP) — ~50 TOPS
- * - **Precision:** INT8 by default; INT4 when [HexagonNpuConfig.precision] is [InferencePrecision.INT4]
+ * - **Precision:** INT4 (q4_0) by default, configured in `claw_config.json`
+ * - **Plugin ID:** `"npu"` — instructs the Nexa runtime to route to HTP
  *
  * ## Primary Roles
  * - **Screen observation** — processes screenshot byte arrays passed in [InferenceRequest.imageBytes].
@@ -31,14 +45,14 @@ import timber.log.Timber
  * - **HYBRID triage** — first-pass confidence scoring that may escalate to [GoogleGpuEngine].
  *
  * ## Integration note
- * The Nexa SDK is loaded from the device's native library directory.  Until the real SDK
+ * The Nexa SDK is loaded from the device's native library directory. Until the real SDK
  * AAR is added to the Gradle dependencies, all native calls are **stubbed** with realistic
- * latency simulation.  Replace the `stubInfer` / `stubInit` bodies with real SDK calls
+ * latency simulation. Replace the `stubInfer` / `stubInit` bodies with real SDK calls
  * when integrating the production library.
  *
  * @param context   Application context used to resolve vault directories.
  * @param npuConfig Hexagon NPU config produced by [com.kenju.claw.hardware.HardwareAccelInitializer].
- * @param vault     Model vault that provides the model file path.
+ * @param vault     Model vault that provides the model directory path.
  */
 class NexaNpuEngine(
     private val context: Context,
@@ -61,6 +75,9 @@ class NexaNpuEngine(
     override var state: EngineState = EngineState.UNINITIALIZED
         private set
 
+    // ── Loaded config (populated during initialization) ──────────────────────
+    private var loadedConfig: NexaModelConfig? = null
+
     // ────────────────────────────────────────────────────────────────────────
     // Initialization
     // ────────────────────────────────────────────────────────────────────────
@@ -68,28 +85,106 @@ class NexaNpuEngine(
     /**
      * Initializes the Nexa SDK session for OmniNeural 4B on the Hexagon HTP.
      *
-     * Steps (stubbed — replace with real Nexa SDK calls):
-     *  1. Verify model file is present in the vault.
-     *  2. Verify NPU hardware is available ([HexagonNpuConfig.isAvailable]).
-     *  3. Create a Nexa `LlmInference` session bound to the HTP backend.
-     *  4. Warm up the model (first inference is slow due to graph compilation).
-     *  5. Transition state to [EngineState.READY].
+     * Steps:
+     *  1. Verify model directory exists with shards + manifest.
+     *  2. Parse `nexa.manifest` to read plugin_id, shard list, and precision.
+     *  3. Parse `claw_config.json` for inference parameters.
+     *  4. Verify NPU hardware availability.
+     *  5. Create a Nexa inference session (stubbed until SDK integrated).
+     *  6. Transition state to [EngineState.READY].
      */
     override suspend fun initialize(): Boolean = withContext(Dispatchers.Default) {
         Timber.tag(TAG).i("Initializing %s…", displayName)
         state = EngineState.LOADING
 
-        // ── Step 1: Model availability ───────────────────────────────────────
-        val modelFile = vault.npuModelFile
-        if (!modelFile.exists()) {
-            Timber.tag(TAG).e("Model file missing: %s", modelFile.absolutePath)
+        // ── Step 1: Model directory validation ──────────────────────────────
+        val modelDir = vault.npuModelDir
+        if (!modelDir.exists() || !modelDir.isDirectory) {
+            Timber.tag(TAG).e("Model directory missing: %s", modelDir.absolutePath)
             state = EngineState.ERROR
             return@withContext false
         }
-        Timber.tag(TAG).d("Model located: %s (%.2f MB)",
-            modelFile.name, modelFile.length() / (1024.0 * 1024.0))
 
-        // ── Step 2: Hardware availability ────────────────────────────────────
+        val manifestFile = vault.npuManifestFile
+        if (!manifestFile.exists()) {
+            Timber.tag(TAG).e("nexa.manifest missing in: %s", modelDir.absolutePath)
+            state = EngineState.ERROR
+            return@withContext false
+        }
+
+        // Count shards
+        val shards = modelDir.listFiles()?.filter {
+            it.name.endsWith(".safetensors") || it.name.endsWith(".bin")
+        } ?: emptyList()
+
+        if (shards.isEmpty()) {
+            Timber.tag(TAG).e("No weight shards found in: %s", modelDir.absolutePath)
+            state = EngineState.ERROR
+            return@withContext false
+        }
+
+        Timber.tag(TAG).d("Model directory: %s (%d shards)", modelDir.absolutePath, shards.size)
+
+        // ── Step 2: Parse nexa.manifest ─────────────────────────────────────
+        val manifest = try {
+            JSONObject(manifestFile.readText())
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Failed to parse nexa.manifest")
+            state = EngineState.ERROR
+            return@withContext false
+        }
+
+        val pluginId = manifest.optString("plugin_id", "cpu")
+        if (pluginId != ClawBootstrapper.NPU_PLUGIN_ID) {
+            Timber.tag(TAG).w(
+                "nexa.manifest plugin_id='%s' — expected '%s'. NPU acceleration may not activate.",
+                pluginId, ClawBootstrapper.NPU_PLUGIN_ID
+            )
+        } else {
+            Timber.tag(TAG).i("nexa.manifest plugin_id=%s ✓ (Hexagon NPU)", pluginId)
+        }
+
+        val manifestShardCount = manifest.optInt("shard_count", shards.size)
+        val runtime = manifest.optString("runtime", "hexagon")
+        val precision = manifest.optString("precision", "int4")
+
+        Timber.tag(TAG).d(
+            "Manifest: model=%s, shards=%d, runtime=%s, precision=%s, plugin=%s",
+            manifest.optString("model_name", "unknown"),
+            manifestShardCount, runtime, precision, pluginId
+        )
+
+        // ── Step 3: Parse claw_config.json ──────────────────────────────────
+        val configFile = vault.npuConfigFile
+        val clawConfig = if (configFile.exists()) {
+            try {
+                val json = JSONObject(configFile.readText())
+                NexaModelConfig(
+                    modelType       = json.optString("model_type", "omnineural"),
+                    maxTokens       = json.optInt("max_tokens", 2048),
+                    enableThinking  = json.optBoolean("enable_thinking", true),
+                    temperature     = json.optDouble("temperature", 0.7).toFloat(),
+                    topP            = json.optDouble("top_p", 0.95).toFloat(),
+                    quantization    = json.optString("quantization", "q4_0"),
+                    pluginId        = json.optString("plugin_id", pluginId)
+                )
+            } catch (e: Exception) {
+                Timber.tag(TAG).w(e, "Failed to parse claw_config.json — using defaults")
+                NexaModelConfig()
+            }
+        } else {
+            Timber.tag(TAG).w("claw_config.json not found — using defaults")
+            NexaModelConfig()
+        }
+
+        loadedConfig = clawConfig
+        Timber.tag(TAG).i(
+            "Config loaded: max_tokens=%d, temp=%.1f, quant=%s, thinking=%b",
+            clawConfig.maxTokens, clawConfig.temperature,
+            clawConfig.quantization, clawConfig.enableThinking
+        )
+
+        // ── Step 4: Hardware availability ───────────────────────────────────
         if (!npuConfig.isAvailable) {
             Timber.tag(TAG).w(
                 "Hexagon NPU unavailable (%s) — engine will run in stub/CPU-fallback mode.",
@@ -99,17 +194,23 @@ class NexaNpuEngine(
             Timber.tag(TAG).i("Hexagon NPU ready: %s", npuConfig.runtimeStatus)
         }
 
-        // ── Step 3 + 4: SDK session creation & warm-up (STUBBED) ─────────────
-        // TODO: Replace with real Nexa SDK calls, e.g.:
-        //   val options = NexaLlmOptions.Builder()
-        //       .setModelPath(modelFile.absolutePath)
-        //       .setBackend(NexaBackend.HEXAGON_HTP)
-        //       .setPrecision(PRECISION_INT8)
+        // ── Step 5: SDK session creation (STUBBED) ──────────────────────────
+        // TODO: Replace with real Nexa SDK manifest-driven loading:
+        //
+        //   val options = NexaModelOptions.builder()
+        //       .setModelDirectory(modelDir.absolutePath)
+        //       .setManifestFile(manifestFile.absolutePath)
+        //       .setPluginId("npu")                       // Hexagon HTP
+        //       .setPrecision(NexaPrecision.INT4)
         //       .setCacheDir(npuConfig.cacheDir)
+        //       .setMaxTokens(clawConfig.maxTokens)
+        //       .setTemperature(clawConfig.temperature)
         //       .build()
-        //   nexaSession = NexaLlmInference.create(context, options)
+        //
+        //   nexaSession = NexaInference.createFromManifest(context, options)
         //   nexaSession.warmUp()
-        val stubSuccess = stubInitializeSession(modelFile.absolutePath)
+        //
+        val stubSuccess = stubInitializeSession(modelDir.absolutePath, shards.size)
 
         return@withContext if (stubSuccess) {
             state = EngineState.READY
@@ -129,8 +230,9 @@ class NexaNpuEngine(
     /**
      * Runs an OmniNeural 4B inference pass on the Hexagon NPU.
      *
-     * If [InferenceRequest.imageBytes] is provided, the image is passed through
-     * the vision encoder head before the text decoder generates output.
+     * Uses the loaded `claw_config.json` parameters for max_tokens, temperature,
+     * and top_p. If [InferenceRequest.imageBytes] is provided, the image is passed
+     * through the vision encoder head before the text decoder generates output.
      *
      * @return [InferenceResult] — always non-null; check [InferenceResult.isSuccess].
      */
@@ -143,25 +245,34 @@ class NexaNpuEngine(
                 )
             }
 
+            val config = loadedConfig ?: NexaModelConfig()
+            val effectiveMaxTokens = minOf(request.maxTokens, config.maxTokens)
+
             val start = System.currentTimeMillis()
             Timber.tag(TAG).d(
-                "[%s] Infer — prompt length: %d chars, vision: %s",
+                "[%s] Infer — prompt: %d chars, vision: %s, maxTokens: %d, temp: %.1f",
                 request.requestId, request.prompt.length,
-                if (request.imageBytes != null) "${request.imageBytes.size} B" else "none"
+                if (request.imageBytes != null) "${request.imageBytes.size} B" else "none",
+                effectiveMaxTokens, config.temperature
             )
 
             return@withContext try {
-                // TODO: Replace with real Nexa SDK inference call, e.g.:
-                //   val response = nexaSession.generateResponse(
-                //       NexaPrompt.build {
-                //           system(request.systemPrompt)
-                //           user(request.prompt)
-                //           imageBytes?.let { vision(it) }
-                //       },
-                //       maxTokens = request.maxTokens,
-                //       temperature = request.temperature
+                // TODO: Replace with real Nexa SDK inference call:
+                //
+                //   val prompt = NexaPrompt.builder()
+                //       .systemPrompt(request.systemPrompt)
+                //       .userMessage(request.prompt)
+                //       .apply { request.imageBytes?.let { visionInput(it) } }
+                //       .enableThinking(config.enableThinking)
+                //       .build()
+                //
+                //   val response = nexaSession.generate(prompt,
+                //       maxTokens   = effectiveMaxTokens,
+                //       temperature = config.temperature,
+                //       topP        = config.topP
                 //   )
-                val response = stubInfer(request)
+                //
+                val response = stubInfer(request, config)
 
                 InferenceResult(
                     requestId       = request.requestId,
@@ -186,6 +297,7 @@ class NexaNpuEngine(
         if (state == EngineState.SHUTDOWN) return@withContext
         Timber.tag(TAG).i("Shutting down %s…", displayName)
         // TODO: nexaSession.close()
+        loadedConfig = null
         state = EngineState.SHUTDOWN
         Timber.tag(TAG).i("%s shut down.", displayName)
     }
@@ -194,11 +306,15 @@ class NexaNpuEngine(
     // Stub implementations (replace with real Nexa SDK calls)
     // ────────────────────────────────────────────────────────────────────────
 
-    private suspend fun stubInitializeSession(modelPath: String): Boolean =
+    private suspend fun stubInitializeSession(modelDirPath: String, shardCount: Int): Boolean =
         withContext(Dispatchers.Default) {
-            // Simulate graph compilation latency on first init (~800 ms on real HTP)
-            kotlinx.coroutines.delay(STUB_INIT_DELAY_MS)
-            Timber.tag(TAG).d("[STUB] Session created for model at: %s", modelPath)
+            // Simulate shard loading latency (~200 ms per shard on real HTP)
+            val delay = minOf(shardCount * 200L, STUB_MAX_INIT_DELAY_MS)
+            kotlinx.coroutines.delay(delay)
+            Timber.tag(TAG).d(
+                "[STUB] Session created from manifest — dir: %s, shards: %d",
+                modelDirPath, shardCount
+            )
             true
         }
 
@@ -209,17 +325,17 @@ class NexaNpuEngine(
         val generatedTokens: Int
     )
 
-    private suspend fun stubInfer(request: InferenceRequest): StubResponse =
+    private suspend fun stubInfer(request: InferenceRequest, config: NexaModelConfig): StubResponse =
         withContext(Dispatchers.Default) {
-            // Simulate NPU inference latency (~45 ms per token on INT8 OmniNeural 4B)
+            // Simulate NPU inference latency (~45 ms per token on INT4 OmniNeural 4B)
             val estimatedTokens = minOf(request.maxTokens, 64)
             kotlinx.coroutines.delay(estimatedTokens * STUB_TOKEN_LATENCY_MS)
 
             val hasVision = request.imageBytes != null
             val stubText = if (hasVision) {
-                "[NPU/OmniNeural-4B] Vision+text response stub for: \"${request.prompt.take(60)}…\""
+                "[NPU/OmniNeural-4B] Vision+text response (${config.quantization}) for: \"${request.prompt.take(60)}…\""
             } else {
-                "[NPU/OmniNeural-4B] Text response stub for: \"${request.prompt.take(80)}…\""
+                "[NPU/OmniNeural-4B] Text response (${config.quantization}) for: \"${request.prompt.take(80)}…\""
             }
             StubResponse(
                 text            = stubText,
@@ -247,7 +363,25 @@ class NexaNpuEngine(
 
     companion object {
         private const val TAG = "KenjuClaw/NexaNPU"
-        private const val STUB_INIT_DELAY_MS    = 800L
-        private const val STUB_TOKEN_LATENCY_MS = 8L    // ~45 ms per token / 6 ms per step
+        private const val STUB_MAX_INIT_DELAY_MS = 3000L
+        private const val STUB_TOKEN_LATENCY_MS  = 8L
     }
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Config data class
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Parsed inference configuration from `claw_config.json`.
+ * These values control the Nexa SDK session parameters.
+ */
+data class NexaModelConfig(
+    val modelType:      String = "omnineural",
+    val maxTokens:      Int    = 2048,
+    val enableThinking: Boolean = true,
+    val temperature:    Float  = 0.7f,
+    val topP:           Float  = 0.95f,
+    val quantization:   String = "q4_0",
+    val pluginId:       String = "npu"
+)

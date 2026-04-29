@@ -1,0 +1,16 @@
+{
+  "model_type": "omnineural",
+  "architectures": ["OmniNeuralForConditionalGeneration"],
+  "model_name": "omni-neural",
+  "max_tokens": 2048,
+  "enable_thinking": true,
+  "plugin_id": "npu",
+  "temperature": 0.7,
+  "top_p": 0.95,
+  "quantization": "q4_0",
+  "npu_config": {
+    "device": "Snapdragon_8_Elite",
+    "precision": "int4",
+    "runtime": "hexagon"
+  }
+}

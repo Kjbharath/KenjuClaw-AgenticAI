@@ -2,10 +2,15 @@ package com.kenju.claw
 
 import android.app.Application
 import android.os.Build
+import com.kenju.claw.bootstrap.ClawBootstrapper
 import com.kenju.claw.hardware.HardwareAccelConfig
 import com.kenju.claw.hardware.HardwareAccelInitializer
 import com.kenju.claw.orchestrator.ClawOrchestrator
 import com.kenju.claw.vault.ModelVaultManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import timber.log.Timber
 
 /**
@@ -43,7 +48,13 @@ class KenjuClawApplication : Application() {
          */
         lateinit var orchestrator: ClawOrchestrator
             private set
+
+        /** Globally accessible [ClawBootstrapper] (non-null after [onCreate]). */
+        lateinit var bootstrapper: ClawBootstrapper
+            private set
     }
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onCreate() {
         super.onCreate()
@@ -88,24 +99,32 @@ class KenjuClawApplication : Application() {
         modelVault = ModelVaultManager(this).also { vault ->
             val vaultReady = vault.ensureVaultReady()
             if (vaultReady) {
-                val verification = vault.verifyModels()
-                Timber.tag(TAG).i(
-                    "Model vault ready — NPU model: %s | GPU model: %s",
-                    verification.npuModel.statusLabel,
-                    verification.gpuModel.statusLabel
-                )
-                if (!verification.allPresent) {
-                    Timber.tag(TAG).w(
-                        "One or more models are missing from vault at: %s",
-                        vault.vaultDir.absolutePath
-                    )
-                }
+                Timber.tag(TAG).i("Model vault directory ready: %s", vault.vaultDir.absolutePath)
             } else {
                 Timber.tag(TAG).e("Model vault directory could not be prepared!")
             }
         }
 
-        // ── 6. Orchestrator singleton ────────────────────────────────────────
+        // ── 6. Bootstrapper — move shards + sync config + validate manifest ─
+        bootstrapper = ClawBootstrapper(this)
+        appScope.launch(Dispatchers.IO) {
+            val result = bootstrapper.bootstrap()
+            Timber.tag(TAG).i(
+                "Bootstrap complete — ready=%b | shards=%d | config=%b | manifest=%b",
+                result.isReady, result.shardsPresentNow,
+                result.configSynced, result.manifestReady
+            )
+
+            // Re-run vault verification now that shards are in place
+            val verification = modelVault.verifyModels()
+            Timber.tag(TAG).i(
+                "Post-bootstrap verification — NPU: %s | GPU: %s",
+                verification.npuModel.statusLabel,
+                verification.gpuModel.statusLabel
+            )
+        }
+
+        // ── 7. Orchestrator singleton ────────────────────────────────────────
         orchestrator = ClawOrchestrator.getInstance(this)
         Timber.tag(TAG).i(
             "ClawOrchestrator ready — engines will initialize when ClawOrchestratorService starts."

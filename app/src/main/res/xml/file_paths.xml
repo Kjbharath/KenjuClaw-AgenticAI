@@ -24,10 +24,20 @@
         path="models/" />
 
     <!--
+        models/OmniNeural-4B/ — sharded NPU model directory
+        Maps to: <context.filesDir>/models/OmniNeural-4B/
+        Contains safetensors shards, config.json, claw_config.json,
+        nexa.manifest, and tokenizer files.
+    -->
+    <files-path
+        name="npu_model"
+        path="models/OmniNeural-4B/" />
+
+    <!--
         qnn_cache/ — compiled Hexagon graph artifacts
         Maps to: <context.filesDir>/qnn_cache/
         Exposed so that a bound NPU delegate service can re-read a cached graph
-        without re-compiling from the original GGUF.
+        without re-compiling from the sharded model.
     -->
     <files-path
         name="qnn_cache"
