@@ -1,0 +1,33 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Background fill — near-black -->
+    <path
+        android:fillColor="#0E0E14"
+        android:pathData="M0,0h108v108H0z" />
+
+    <!-- Claw mark 1 — left (violet) -->
+    <path
+        android:fillColor="#7C6AF7"
+        android:pathData="M34,30 Q36,42 30,58 Q28,64 32,66 Q36,68 38,62 Q44,46 42,32 Q41,28 37,28 Q34,28 34,30z" />
+
+    <!-- Claw mark 2 — center (gradient mid) -->
+    <path
+        android:fillColor="#6E8CF5"
+        android:pathData="M50,24 Q53,38 50,56 Q49,64 53,66 Q57,68 58,62 Q61,44 58,28 Q57,22 53,22 Q50,22 50,24z" />
+
+    <!-- Claw mark 3 — right (cyan) -->
+    <path
+        android:fillColor="#5ED4F4"
+        android:pathData="M68,32 Q70,44 66,60 Q64,66 68,68 Q72,70 74,64 Q78,48 76,34 Q75,30 72,29 Q69,29 68,32z" />
+
+    <!-- Subtle glow halo behind center -->
+    <path
+        android:fillColor="#7C6AF7"
+        android:fillAlpha="0.15"
+        android:pathData="M54,54m-22,0a22,22 0,1 1,44 0a22,22 0,1 1,-44 0" />
+
+</vector>
