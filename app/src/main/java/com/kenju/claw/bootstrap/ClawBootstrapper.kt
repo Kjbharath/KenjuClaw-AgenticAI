@@ -92,9 +92,6 @@ class ClawBootstrapper(private val context: Context) {
         // ── 4. Validate / create nexa.manifest ──────────────────────────────
         val manifestReady = ensureNexaManifest(modelDir)
 
-        // ── 4.5. Generate dummy shards for stubbed execution if needed ──────
-        ensureDummyShardsForTesting(modelDir, vaultDir)
-
         // ── 5. Final readiness check ────────────────────────────────────────
         val shardCount = modelDir.listFiles()
             ?.count { it.name.endsWith(".safetensors") || it.name.endsWith(".bin") }
@@ -371,22 +368,6 @@ class ClawBootstrapper(private val context: Context) {
     // ────────────────────────────────────────────────────────────────────────
     // Utilities
     // ────────────────────────────────────────────────────────────────────────
-
-    private fun ensureDummyShardsForTesting(npuModelDir: File, vaultDir: File) {
-        // Dummy NPU shard
-        val dummyNpuShard = File(npuModelDir, "model-00001-of-00001.safetensors")
-        if (!dummyNpuShard.exists()) {
-            dummyNpuShard.writeText("dummy weight data for testing")
-            Timber.tag(TAG).i("Created dummy NPU shard for testing: %s", dummyNpuShard.name)
-        }
-
-        // Dummy GPU model
-        val dummyGpuModel = File(vaultDir, "gemma_4_e2b.bin")
-        if (!dummyGpuModel.exists()) {
-            dummyGpuModel.writeText("dummy mediapipe flatbuffer")
-            Timber.tag(TAG).i("Created dummy GPU model for testing: %s", dummyGpuModel.name)
-        }
-    }
 
     private fun copyFile(src: File, dest: File) {
         FileInputStream(src).use { fis ->

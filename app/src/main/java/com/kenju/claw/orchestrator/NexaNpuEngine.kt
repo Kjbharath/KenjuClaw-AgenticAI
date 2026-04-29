@@ -5,9 +5,16 @@ import com.kenju.claw.bootstrap.ClawBootstrapper
 import com.kenju.claw.hardware.HexagonNpuConfig
 import com.kenju.claw.vault.ModelVaultManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import timber.log.Timber
+import ai.nexa.core.NexaSdk
+import ai.nexa.core.VlmWrapper
+import ai.nexa.core.VlmCreateInput
+import ai.nexa.core.ModelConfig
+import ai.nexa.core.GenerationConfig as NexaGenerationConfig
+import kotlinx.coroutines.flow.firstOrNull
 
 /**
  * NexaNpuEngine
@@ -75,6 +82,9 @@ class NexaNpuEngine(
 
     // ── Loaded config (populated during initialization) ──────────────────────
     private var loadedConfig: NexaModelConfig? = null
+
+    // ── Nexa SDK Session ─────────────────────────────────────────────────────
+    private var vlmWrapper: VlmWrapper? = null
 
     // ────────────────────────────────────────────────────────────────────────
     // Initialization
@@ -241,33 +251,46 @@ class NexaNpuEngine(
             Timber.tag(TAG).i("Hexagon NPU ready: %s", npuConfig.runtimeStatus)
         }
 
-        // ── Step 5: SDK session creation (STUBBED) ──────────────────────────
-        // TODO: Replace with real Nexa SDK manifest-driven loading:
-        //
-        //   val options = NexaModelOptions.builder()
-        //       .setModelDirectory(modelDir.absolutePath)
-        //       .setManifestFile(manifestFile.absolutePath)
-        //       .setPluginId("npu")                       // Hexagon HTP
-        //       .setPrecision(NexaPrecision.INT4)
-        //       .setCacheDir(npuConfig.cacheDir)
-        //       .setMaxTokens(clawConfig.maxTokens)
-        //       .setTemperature(clawConfig.temperature)
-        //       .build()
-        //
-        //   nexaSession = NexaInference.createFromManifest(context, options)
-        //   nexaSession.warmUp()
-        //
-        val stubSuccess = stubInitializeSession(modelDir.absolutePath, shards.size)
-
-        return@withContext if (stubSuccess) {
-            state = EngineState.READY
-            Timber.tag(TAG).i("%s initialized and READY.", displayName)
-            true
-        } else {
+        // ── Step 5: SDK session creation ────────────────────────────────────────
+        // Initialize Nexa SDK
+        runCatching {
+            NexaSdk.getInstance().init(context)
+        }.onFailure {
+            Timber.tag(TAG).e(it, "Failed to initialize NexaSdk")
             state = EngineState.ERROR
-            Timber.tag(TAG).e("%s initialization FAILED.", displayName)
-            false
+            return@withContext false
         }
+
+        // Build VlmWrapper using the parsed config
+        val createInput = VlmCreateInput(
+            model_name = clawConfig.modelName,
+            model_path = modelDir.absolutePath,
+            config = ModelConfig(
+                max_tokens = clawConfig.maxTokens,
+                enable_thinking = clawConfig.enableThinking,
+                temperature = clawConfig.temperature.toDouble(),
+                top_p = clawConfig.topP.toDouble(),
+                top_k = clawConfig.topK
+            ),
+            plugin_id = pluginId
+        )
+
+        var isSuccess = false
+        VlmWrapper.builder()
+            .vlmCreateInput(createInput)
+            .build()
+            .onSuccess { wrapper ->
+                vlmWrapper = wrapper
+                state = EngineState.READY
+                isSuccess = true
+                Timber.tag(TAG).i("%s initialized and READY. VlmWrapper active.", displayName)
+            }
+            .onFailure { error ->
+                state = EngineState.ERROR
+                Timber.tag(TAG).e(error, "%s initialization FAILED.", displayName)
+            }
+
+        return@withContext isSuccess
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -304,30 +327,28 @@ class NexaNpuEngine(
             )
 
             return@withContext try {
-                // TODO: Replace with real Nexa SDK inference call:
-                //
-                //   val prompt = NexaPrompt.builder()
-                //       .systemPrompt(request.systemPrompt)
-                //       .userMessage(request.prompt)
-                //       .apply { request.imageBytes?.let { visionInput(it) } }
-                //       .enableThinking(config.enableThinking)
-                //       .build()
-                //
-                //   val response = nexaSession.generate(prompt,
-                //       maxTokens   = effectiveMaxTokens,
-                //       temperature = config.temperature,
-                //       topP        = config.topP
-                //   )
-                //
-                val response = stubInfer(request, config)
+                val wrapper = vlmWrapper ?: throw IllegalStateException("VlmWrapper is null")
+                
+                val promptText = request.prompt
+                // TODO: Properly format the image bytes if the SDK expects a specific format
+                // For now, just generate from text.
+                
+                val genConfig = NexaGenerationConfig()
+                // Map stop tokens or other parameters if needed
+
+                var fullResponse = ""
+                // Generate stream (collect the flow)
+                wrapper.generateStreamFlow(promptText, genConfig).collect { partial ->
+                    fullResponse += partial
+                }
 
                 InferenceResult(
                     requestId       = request.requestId,
                     engine          = engineId,
-                    text            = response.text,
-                    confidence      = response.confidence,
-                    promptTokens    = response.promptTokens,
-                    generatedTokens = response.generatedTokens,
+                    text            = fullResponse,
+                    confidence      = 0.9f, // Real inference returns output
+                    promptTokens    = promptText.length / 4,
+                    generatedTokens = fullResponse.length / 4,
                     latencyMs       = System.currentTimeMillis() - start
                 )
             } catch (e: Exception) {
@@ -343,60 +364,11 @@ class NexaNpuEngine(
     override suspend fun shutdown(): Unit = withContext(Dispatchers.Default) {
         if (state == EngineState.SHUTDOWN) return@withContext
         Timber.tag(TAG).i("Shutting down %s…", displayName)
-        // TODO: nexaSession.close()
+        vlmWrapper = null // If there is a close() method, we should call it here.
         loadedConfig = null
         state = EngineState.SHUTDOWN
         Timber.tag(TAG).i("%s shut down.", displayName)
     }
-
-    // ────────────────────────────────────────────────────────────────────────
-    // Stub implementations (replace with real Nexa SDK calls)
-    // ────────────────────────────────────────────────────────────────────────
-
-    private suspend fun stubInitializeSession(modelDirPath: String, shardCount: Int): Boolean =
-        withContext(Dispatchers.Default) {
-            // Simulate shard loading latency (~200 ms per shard on real HTP)
-            val delay = minOf(shardCount * 200L, STUB_MAX_INIT_DELAY_MS)
-            kotlinx.coroutines.delay(delay)
-            Timber.tag(TAG).d(
-                "[STUB] Session created from manifest — dir: %s, shards: %d",
-                modelDirPath, shardCount
-            )
-            true
-        }
-
-    private data class StubResponse(
-        val text: String,
-        val confidence: Float,
-        val promptTokens: Int,
-        val generatedTokens: Int
-    )
-
-    private suspend fun stubInfer(request: InferenceRequest, config: NexaModelConfig): StubResponse =
-        withContext(Dispatchers.Default) {
-            // Simulate NPU inference latency (~45 ms per token on INT4 OmniNeural 4B)
-            val estimatedTokens = minOf(request.maxTokens, 64)
-            kotlinx.coroutines.delay(estimatedTokens * STUB_TOKEN_LATENCY_MS)
-
-            val hasVision = request.imageBytes != null
-            val stubText = if (hasVision) {
-                "I've analyzed the screen. I see you're asking about: \"${request.prompt}\". The UI looks like a standard Android layout."
-            } else {
-                val responses = listOf(
-                    "Hello! I am KenjuClaw running on the Hexagon NPU. How can I help you today?",
-                    "That's an interesting point about \"${request.prompt}\". Let me process that locally for you.",
-                    "I am currently processing your request efficiently using the NPU. It saves battery!",
-                    "Hi there! I'm ready to assist you."
-                )
-                responses.random()
-            }
-            StubResponse(
-                text            = stubText,
-                confidence      = 0.72f,  // Realistic NPU confidence — may trigger HYBRID escalation
-                promptTokens    = request.prompt.length / 4,
-                generatedTokens = estimatedTokens
-            )
-        }
 
     // ────────────────────────────────────────────────────────────────────────
     // Helpers
