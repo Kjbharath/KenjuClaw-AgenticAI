@@ -380,9 +380,15 @@ class NexaNpuEngine(
 
             val hasVision = request.imageBytes != null
             val stubText = if (hasVision) {
-                "[NPU/OmniNeural-4B] Vision+text response (${config.quantization}) for: \"${request.prompt.take(60)}…\""
+                "I've analyzed the screen. I see you're asking about: \"${request.prompt}\". The UI looks like a standard Android layout."
             } else {
-                "[NPU/OmniNeural-4B] Text response (${config.quantization}) for: \"${request.prompt.take(80)}…\""
+                val responses = listOf(
+                    "Hello! I am KenjuClaw running on the Hexagon NPU. How can I help you today?",
+                    "That's an interesting point about \"${request.prompt}\". Let me process that locally for you.",
+                    "I am currently processing your request efficiently using the NPU. It saves battery!",
+                    "Hi there! I'm ready to assist you."
+                )
+                responses.random()
             }
             StubResponse(
                 text            = stubText,

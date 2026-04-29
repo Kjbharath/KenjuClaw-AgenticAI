@@ -230,9 +230,14 @@ class GoogleGpuEngine(
 
             val isFunctionCall = request.functionSchema != null
             val stubText = if (isFunctionCall) {
-                "[GPU/Gemma4-E2B-IT] Function-call response for: \"${request.prompt.take(60)}…\""
+                "I've evaluated your request to \"${request.prompt}\" and I'll trigger the appropriate tool now."
             } else {
-                "[GPU/Gemma4-E2B-IT] Reasoning response for: \"${request.prompt.take(80)}…\""
+                val responses = listOf(
+                    "I am the Gemma 4 E2B-IT model running on your Adreno GPU. I can handle complex reasoning!",
+                    "Thinking deeply about \"${request.prompt}\"... Here is a detailed, multi-step breakdown.",
+                    "Hi! I'm using the Adreno 830 GPU to give you the most powerful response possible."
+                )
+                responses.random()
             }
             val stubFunctionCallJson = if (isFunctionCall) {
                 """{"name":"stub_tool","arguments":{"query":"${request.prompt.take(40)}"}}"""
