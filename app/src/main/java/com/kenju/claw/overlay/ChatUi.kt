@@ -29,7 +29,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -218,8 +218,8 @@ fun ChatInputBar(
             modifier = Modifier.size(36.dp)
         ) {
             Icon(
-                imageVector = Icons.Default.Mic,
-                contentDescription = "Voice Input",
+                imageVector = Icons.Default.Add,
+                contentDescription = "Attach or Voice Input",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                 modifier = Modifier.size(18.dp)
             )
