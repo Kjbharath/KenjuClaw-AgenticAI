@@ -167,12 +167,13 @@ class HardwareHudMonitor(
  * @param cpuFreqMhz       Current big-core CPU frequency in MHz.
  */
 data class HudSnapshot(
-    val cpuUsagePercent: Int?   = null,
-    val gpuUsagePercent: Int?   = null,
-    val npuBusyPercent:  Int?   = null,
-    val thermalCelsius:  Float? = null,
-    val ramUsedMb:       Long?  = null,
-    val cpuFreqMhz:      Int?   = null
+    val cpuUsagePercent:       Int?   = null,
+    val gpuUsagePercent:       Int?   = null,
+    val npuBusyPercent:        Int?   = null,
+    val thermalCelsius:        Float? = null,
+    val ramUsedMb:             Long?  = null,
+    val cpuFreqMhz:            Int?   = null,
+    val inferenceTokensPerSec: Float? = null
 ) {
     /** Thermal tier — drives HUD colour. */
     val thermalStatus: ThermalStatus get() = when {

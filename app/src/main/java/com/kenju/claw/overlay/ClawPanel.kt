@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -68,10 +69,13 @@ private val SegShape    = RoundedCornerShape(12.dp)
  */
 @Composable
 fun ClawPanel(
-    visible: Boolean,
-    activeMode: ClawMode,
-    hud: HudSnapshot,
-    onModeSelect: (ClawMode) -> Unit
+    visible:       Boolean,
+    activeMode:    ClawMode,
+    hud:           HudSnapshot,
+    messages:      List<ChatMessage>,
+    perf:          InferencePerf,
+    onSendMessage: (String) -> Unit,
+    onModeSelect:  (ClawMode) -> Unit
 ) {
     AnimatedVisibility(
         visible = visible,
@@ -86,7 +90,8 @@ fun ClawPanel(
     ) {
         Column(
             modifier = Modifier
-                .width(280.dp)
+                .width(320.dp)
+                .heightIn(max = 580.dp)
                 .clip(PanelShape)
                 .background(PanelBg)
                 .border(
@@ -127,7 +132,27 @@ fun ClawPanel(
                     color         = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             )
-            HardwareHud(hud = hud)
+            HardwareHud(hud = hud, activeMode = activeMode)
+
+            HorizontalDivider(color = PanelBorder, thickness = 0.5.dp)
+
+            // -- Chat UI
+            ChatHistoryList(
+                messages   = messages,
+                activeMode = activeMode,
+                modifier   = Modifier.weight(1f, fill = false)
+            )
+
+            // -- Performance Badge
+            PerformanceBadge(
+                perf       = perf,
+                activeMode = activeMode
+            )
+
+            // -- Chat Input
+            ChatInputBar(
+                onSendMessage = onSendMessage
+            )
         }
     }
 }
@@ -255,7 +280,12 @@ private fun SegmentChip(
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun HardwareHud(hud: HudSnapshot) {
+private fun HardwareHud(hud: HudSnapshot, activeMode: ClawMode = ClawMode.EFFICIENT_NPU) {
+    val tokColor = when (activeMode) {
+        ClawMode.EFFICIENT_NPU -> NpuGlowColor
+        ClawMode.POWER_GPU     -> GpuGlowColor
+        ClawMode.HYBRID        -> Color(0xFFB08BFF)
+    }
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Row(
             modifier              = Modifier.fillMaxWidth(),
@@ -270,8 +300,9 @@ private fun HardwareHud(hud: HudSnapshot) {
             modifier              = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            HudMetric(label = "RAM",   value = hud.ramUsedMb?.let { "${it} MB" }   ?: "N/A",  color = HudGray)
-            HudMetric(label = "FREQ",  value = hud.cpuFreqMhz?.let { "${it} MHz" } ?: "N/A",  color = HudGray)
+            HudMetric(label = "RAM",    value = hud.ramUsedMb?.let { "${it} MB" }   ?: "N/A",  color = HudGray)
+            HudMetric(label = "FREQ",   value = hud.cpuFreqMhz?.let { "${it} MHz" } ?: "N/A",  color = HudGray)
+            HudMetric(label = "TOK/S",  value = hud.inferenceTokensPerSec?.let { "%.1f".format(it) } ?: "—", color = tokColor)
             ThermalStatusBadge(status = hud.thermalStatus)
         }
     }

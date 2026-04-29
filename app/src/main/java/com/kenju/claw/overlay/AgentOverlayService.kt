@@ -88,6 +88,10 @@ class AgentOverlayService : Service(),
 
     private lateinit var hudMonitor: HardwareHudMonitor
 
+    // ── Chat controller ───────────────────────────────────────────────────────
+
+    private lateinit var chatController: ChatController
+
     // ── Coroutine scope ───────────────────────────────────────────────────────
 
     private val serviceJob   = SupervisorJob()
@@ -109,6 +113,8 @@ class AgentOverlayService : Service(),
         hudMonitor = HardwareHudMonitor(context = this) { snapshot ->
             uiState.hud = snapshot
         }
+
+        chatController = ChatController(KenjuClawApplication.orchestrator, serviceScope)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -172,10 +178,14 @@ class AgentOverlayService : Service(),
             setContent {
                 KenjuClawTheme {
                     ClawOverlayContent(
-                        state        = uiState,
-                        onTap        = { uiState.panelExpanded = !uiState.panelExpanded },
-                        onDrag       = { dx, dy -> repositionWindow(dx, dy) },
-                        onModeSelect = { mode -> switchMode(mode) }
+                        state          = uiState,
+                        chatController = chatController,
+                        onTap          = {
+                            uiState.panelExpanded = !uiState.panelExpanded
+                            updateWindowFocus(uiState.panelExpanded)
+                        },
+                        onDrag         = { dx, dy -> repositionWindow(dx, dy) },
+                        onModeSelect   = { mode -> switchMode(mode) }
                     )
                 }
             }
@@ -244,6 +254,30 @@ class AgentOverlayService : Service(),
             .setOngoing(true)
             .setSilent(true)
             .build()
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Focus toggle (keyboard support)
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * Toggles [WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE] so the software
+     * keyboard can appear when the chat panel is expanded.
+     *
+     * When [expanded] is true, FLAG_NOT_FOCUSABLE is removed (overlay steals focus).
+     * When false, it is re-added (background apps receive touches normally).
+     */
+    private fun updateWindowFocus(expanded: Boolean) {
+        if (!::layoutParams.isInitialized) return
+        if (expanded) {
+            layoutParams.flags = layoutParams.flags and
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+        } else {
+            layoutParams.flags = layoutParams.flags or
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        }
+        runCatching { windowManager.updateViewLayout(overlayView, layoutParams) }
+            .onFailure { Timber.tag(TAG).w(it, "Could not update window focus") }
     }
 
     companion object {
