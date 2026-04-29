@@ -245,7 +245,7 @@ class ClawBootstrapper(private val context: Context) {
 
     private fun ingestGpuModel(vaultDir: File): Boolean {
         val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        val gpuModelFileName = "gemma_4_e2b.bin"
+        val gpuModelFileName = "gemma-4-E2B-it.litertlm"
         
         // Check root Download directory
         var srcFile = File(downloadDir, gpuModelFileName)

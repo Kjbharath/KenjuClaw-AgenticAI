@@ -77,7 +77,7 @@ class ModelVaultManager(private val context: Context) {
         const val MODEL_NPU_FILENAME = "omnineural_4b.gguf"
 
         /** Adreno GPU model — flat-buffer format, consumed via TFLite GPU delegate. */
-        const val MODEL_GPU_FILENAME = "gemma_4_e2b.bin"
+        const val MODEL_GPU_FILENAME = "gemma-4-E2B-it.litertlm"
     }
 
     // ────────────────────────────────────────────────────────────────────────
