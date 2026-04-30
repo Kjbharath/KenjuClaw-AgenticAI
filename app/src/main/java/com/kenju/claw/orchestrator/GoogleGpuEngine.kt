@@ -67,6 +67,7 @@ class GoogleGpuEngine(
 
     private var llmSession: LlmInference? = null
     private var isStubMode: Boolean = false
+    private var initializationError: String? = null
 
     // ────────────────────────────────────────────────────────────────────────
     // Initialization
@@ -107,26 +108,47 @@ class GoogleGpuEngine(
         }
 
         // ── Steps 3 + 4: MediaPipe session creation ──────────────────────────
-        try {
-            val backendType = if (backend == GpuBackend.VULKAN) {
-                LlmInference.Backend.GPU
-            } else {
-                LlmInference.Backend.CPU
-            }
+        var session: LlmInference? = null
+        var lastError: Exception? = null
 
+        // Attempt 1: Preferred Backend
+        try {
+            val backendType = if (backend == GpuBackend.VULKAN) LlmInference.Backend.GPU else LlmInference.Backend.CPU
             val options = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(modelFile.absolutePath)
-                .setMaxTokens(2048)
                 .setPreferredBackend(backendType)
                 .build()
-                
-            llmSession = LlmInference.createFromOptions(context, options)
-
-            state = EngineState.READY
-            Timber.tag(TAG).i("%s initialized and READY. LlmInference active.", displayName)
-            return@withContext true
+            session = LlmInference.createFromOptions(context, options)
+            Timber.tag(TAG).i("LlmInference initialized successfully with backend: %s", backendType.name)
         } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "%s initialization FAILED natively. Falling back to STUB mode (dummy model detected).", displayName)
+            Timber.tag(TAG).w(e, "LlmInference failed with preferred backend.")
+            lastError = e
+        }
+
+        // Attempt 2: Fallback to CPU if GPU failed
+        if (session == null && backend == GpuBackend.VULKAN) {
+            try {
+                Timber.tag(TAG).i("Falling back to CPU backend for LlmInference...")
+                val options = LlmInference.LlmInferenceOptions.builder()
+                    .setModelPath(modelFile.absolutePath)
+                    .setPreferredBackend(LlmInference.Backend.CPU)
+                    .build()
+                session = LlmInference.createFromOptions(context, options)
+                Timber.tag(TAG).i("LlmInference initialized successfully with CPU fallback.")
+                lastError = null
+            } catch (e: Exception) {
+                Timber.tag(TAG).e(e, "LlmInference CPU fallback also failed.")
+                lastError = e
+            }
+        }
+
+        if (session != null) {
+            llmSession = session
+            state = EngineState.READY
+            return@withContext true
+        } else {
+            Timber.tag(TAG).e(lastError, "%s initialization completely FAILED natively.", displayName)
+            initializationError = lastError?.message ?: "Unknown MediaPipe Error"
             isStubMode = true
             state = EngineState.READY
             return@withContext true
@@ -167,21 +189,9 @@ class GoogleGpuEngine(
                 val extractedJson: String?
                 
                 if (isStubMode) {
-                    // Simulate GPU inference latency
-                    kotlinx.coroutines.delay(minOf(request.maxTokens, 128) * 5L)
-                    
-                    if (isFunctionCall) {
-                        responseText = "I've evaluated your request to \"${request.prompt}\" and I'll trigger the appropriate tool now."
-                        extractedJson = """{"name":"stub_tool","arguments":{"query":"${request.prompt.take(40)}"}}"""
-                    } else {
-                        val responses = listOf(
-                            "I am the Gemma 4 E2B-IT model running on your Adreno GPU (Stub Mode). I can handle complex reasoning!",
-                            "Thinking deeply about \"${request.prompt}\"... Here is a detailed, multi-step breakdown.",
-                            "Hi! I'm using the Adreno 830 GPU fallback to give you the most powerful response possible."
-                        )
-                        responseText = responses.random()
-                        extractedJson = null
-                    }
+                    kotlinx.coroutines.delay(500)
+                    responseText = "⚠️ **Real Model Initialization Failed!**\n\nI tried to load the real Gemma model, but the MediaPipe SDK crashed with the following error:\n\n`${initializationError}`\n\nIf you see `Error building tflite model`, it means the file in your Downloads folder is invalid, corrupt, or is a tiny HTML/LFS pointer instead of the actual 2GB+ model binary. Please re-download the raw `.litertlm` file and clear the app data to try again!"
+                    extractedJson = null
                 } else {
                     val session = llmSession ?: throw IllegalStateException("LlmInference session is null")
                     
