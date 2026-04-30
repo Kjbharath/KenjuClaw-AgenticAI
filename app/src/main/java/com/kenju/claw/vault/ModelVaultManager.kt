@@ -22,7 +22,7 @@ import java.io.File
  *     │   ├── tokenizer.json
  *     │   ├── model-00001-of-NNNNN.safetensors
  *     │   └── …
- *     └── gemma_4_e2b.bin          ← Adreno GPU model  (TFLite / flat-buffer format)
+ *     └── gemma-4-E2B-it_qualcomm_sm8750.litertlm  ← Adreno GPU model (MediaPipe LiteRT format)
  * ```
  *
  * ## Responsibilities
@@ -77,7 +77,7 @@ class ModelVaultManager(private val context: Context) {
         const val MODEL_NPU_FILENAME = "omnineural_4b.gguf"
 
         /** Adreno GPU model — flat-buffer format, consumed via TFLite GPU delegate. */
-        const val MODEL_GPU_FILENAME = "gemma-4-E2B-it.litertlm"
+        const val MODEL_GPU_FILENAME = "gemma-4-E2B-it_qualcomm_sm8750.litertlm"
     }
 
     // ────────────────────────────────────────────────────────────────────────

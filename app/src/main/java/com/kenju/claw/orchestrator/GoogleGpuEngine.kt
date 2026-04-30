@@ -17,7 +17,7 @@ import com.google.mediapipe.tasks.genai.llminference.LlmInference
  *
  * ## Model
  * - **Name:** Gemma 4 E2B-IT (Instruction-Tuned)
- * - **File:** [ModelVaultManager.MODEL_GPU_FILENAME] (`gemma-4-E2B-it.litertlm`)
+ * - **File:** [ModelVaultManager.MODEL_GPU_FILENAME] (`gemma-4-E2B-it_qualcomm_sm8750.litertlm`)
  * - **Format:** MediaPipe LiteRT flat-buffer (`.litertlm`) — loaded directly by
  *   `com.google.mediapipe.tasks.genai.llminference.LlmInference`.
  *
