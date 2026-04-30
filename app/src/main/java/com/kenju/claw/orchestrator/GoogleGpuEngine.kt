@@ -7,7 +7,7 @@ import com.kenju.claw.vault.ModelVaultManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import timber.log.Timber
-import com.google.mediapipe.tasks.genai.llminference.LlmInference
+import com.google.ai.edge.litert.genai.llminference.LlmInference
 
 /**
  * GoogleGpuEngine
@@ -116,12 +116,15 @@ class GoogleGpuEngine(
             val backendType = if (backend == GpuBackend.VULKAN) LlmInference.Backend.GPU else LlmInference.Backend.CPU
             val options = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(modelFile.absolutePath)
+                .setMaxTokens(MAX_TOKENS_LIMIT)
                 .setPreferredBackend(backendType)
                 .build()
+            
+            Timber.tag(TAG).d("Attempting LlmInference.createFromOptions with backend: %s", backendType.name)
             session = LlmInference.createFromOptions(context, options)
             Timber.tag(TAG).i("LlmInference initialized successfully with backend: %s", backendType.name)
         } catch (e: Exception) {
-            Timber.tag(TAG).w(e, "LlmInference failed with preferred backend.")
+            Timber.tag(TAG).w(e, "LlmInference failed with preferred backend (%s).", backend.name)
             lastError = e
         }
 
@@ -131,6 +134,7 @@ class GoogleGpuEngine(
                 Timber.tag(TAG).i("Falling back to CPU backend for LlmInference...")
                 val options = LlmInference.LlmInferenceOptions.builder()
                     .setModelPath(modelFile.absolutePath)
+                    .setMaxTokens(MAX_TOKENS_LIMIT)
                     .setPreferredBackend(LlmInference.Backend.CPU)
                     .build()
                 session = LlmInference.createFromOptions(context, options)
@@ -147,8 +151,9 @@ class GoogleGpuEngine(
             state = EngineState.READY
             return@withContext true
         } else {
-            Timber.tag(TAG).e(lastError, "%s initialization completely FAILED natively.", displayName)
-            initializationError = lastError?.message ?: "Unknown MediaPipe Error"
+            val errorMsg = lastError?.message ?: "Unknown MediaPipe Error"
+            Timber.tag(TAG).e(lastError, "Failed to initialize engine %s: %s", displayName, errorMsg)
+            initializationError = errorMsg
             isStubMode = true
             state = EngineState.READY
             return@withContext true
@@ -270,5 +275,7 @@ class GoogleGpuEngine(
         private const val STUB_INIT_DELAY_MS    = 2000L
         private const val STUB_TOKEN_LATENCY_MS = 5L    // ~20 ms per token / 4 ms per step
         private const val FULL_CONFIDENCE       = 0.98f // GPU engine always returns high confidence
+
+        private const val MAX_TOKENS_LIMIT      = 4096  // Matches claw_config.json
     }
 }

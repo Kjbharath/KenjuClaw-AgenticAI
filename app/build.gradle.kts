@@ -91,8 +91,8 @@ dependencies {
     implementation(libs.timber)
     implementation(libs.nexa.core)
 
-    // MediaPipe LLM Inference
-    implementation(libs.mediapipe.tasks.genai)
+    // LiteRT LLM Inference
+    implementation(libs.litert.genai)
 
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)

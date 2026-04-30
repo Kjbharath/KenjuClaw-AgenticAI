@@ -9,7 +9,7 @@ appcompat                   = "1.7.0"
 material                    = "1.12.0"
 coroutines                  = "1.9.0"
 timber                      = "5.0.1"
-mediapipe                   = "0.10.22"
+litert                      = "1.0.1"
 nexa                        = "0.0.24"
 
 [libraries]
@@ -31,7 +31,7 @@ androidx-appcompat             = { group = "androidx.appcompat",          name =
 material                       = { group = "com.google.android.material",  name = "material",                    version.ref = "material" }
 kotlinx-coroutines-android     = { group = "org.jetbrains.kotlinx",       name = "kotlinx-coroutines-android",   version.ref = "coroutines" }
 timber                         = { group = "com.jakewharton.timber",       name = "timber",                       version.ref = "timber" }
-mediapipe-tasks-genai          = { group = "com.google.mediapipe",         name = "tasks-genai",                  version.ref = "mediapipe" }
+litert-genai                   = { group = "com.google.ai.edge.litert",    name = "litert-genai",                 version.ref = "litert" }
 nexa-core                      = { group = "ai.nexa",                      name = "core",                         version.ref = "nexa" }
 
 [plugins]
